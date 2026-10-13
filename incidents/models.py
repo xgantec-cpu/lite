@@ -201,6 +201,8 @@ class SecurityEvent(models.Model):
         ("access_denied", "Access denied"),
         ("mfa_enabled", "MFA enabled"),
         ("mfa_failure", "MFA failed"),
+        ("case_delete_success", "Case data deleted"),
+        ("case_delete_failure", "Case data deletion failed"),
     ]
     event_type = models.CharField(max_length=32, choices=EVENT_TYPES)
     user = models.ForeignKey(

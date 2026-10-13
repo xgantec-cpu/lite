@@ -587,3 +587,42 @@ html[data-theme="dark"] .favorite-button.selected {
 html[data-theme="dark"] .favorite-button.selected span {
   color: #8bd8f6 !important;
 }
+
+html[data-theme="dark"] .case-delete-zone {
+  border-color: #75443f !important;
+  background: #321f20 !important;
+}
+
+html[data-theme="dark"] .case-delete-zone h2 {
+  color: #ffb8b2 !important;
+}
+
+html[data-theme="dark"] .case-delete-zone p,
+html[data-theme="dark"] .case-delete-form label {
+  color: #e2b9b5 !important;
+}
+
+html[data-theme="dark"] .case-delete-locked {
+  color: #e2b9b5 !important;
+}
+
+html[data-theme="dark"] .case-delete-locked strong {
+  color: #ffb8b2 !important;
+}
+
+html[data-theme="dark"] .case-delete-button {
+  border-color: #d65b52 !important;
+  color: #fff !important;
+  background: #a8342d !important;
+}
+
+html[data-theme="dark"] .case-delete-button:hover {
+  border-color: #f0766c !important;
+  background: #c5453c !important;
+}
+
+html[data-theme="dark"] .case-delete-button:disabled,
+html[data-theme="dark"] .case-delete-button:disabled:hover {
+  border-color: #806663 !important;
+  background: #806663 !important;
+}

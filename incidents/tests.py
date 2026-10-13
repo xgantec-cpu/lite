@@ -44,6 +44,8 @@ class EmergencyRequestFlowTests(TestCase):
         response = self.client.get(reverse("quick_help"))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Tap to record video")
+        self.assertContains(response, "quick-camera-switch")
+        self.assertContains(response, "quick-camera-toggle")
 
     def test_submission_creates_request_and_incident(self):
         response = self.client.post(reverse("home"), {
@@ -833,6 +835,44 @@ class ResponderDashboardTests(TestCase):
         self.assertContains(response, "Submitted video")
         self.assertContains(response, reverse("dashboard_recording", args=[recording.pk]))
 
+    def test_only_parent_admin_can_delete_solved_case_data_with_passcode(self):
+        recording = Recording.objects.create(
+            incident=self.incident,
+            file=SimpleUploadedFile("delete-me.webm", b"video", content_type="video/webm"),
+            duration_seconds=4,
+        )
+        self.incident.status = "resolved"
+        self.incident.save(update_fields=["status"])
+        self.client.force_login(self.user)
+        denied = self.client.post(reverse("dashboard_incident", args=[self.incident.pk]), {
+            "action": "delete_case",
+            "delete_passcode": "778899",
+        })
+        self.assertEqual(denied.status_code, 403)
+        self.assertTrue(Incident.objects.filter(pk=self.incident.pk).exists())
+
+        self.user.is_superuser = True
+        self.user.save(update_fields=["is_superuser"])
+        detail = self.client.get(reverse("dashboard_incident", args=[self.incident.pk]))
+        self.assertContains(detail, "Delete all case data")
+        wrong = self.client.post(reverse("dashboard_incident", args=[self.incident.pk]), {
+            "action": "delete_case",
+            "delete_passcode": "wrong-passcode",
+        })
+        self.assertRedirects(wrong, reverse("dashboard_incident", args=[self.incident.pk]))
+        self.assertTrue(Incident.objects.filter(pk=self.incident.pk).exists())
+        self.assertTrue(SecurityEvent.objects.filter(event_type="case_delete_failure", user=self.user).exists())
+
+        deleted = self.client.post(reverse("dashboard_incident", args=[self.incident.pk]), {
+            "action": "delete_case",
+            "delete_passcode": "778899",
+        })
+        self.assertRedirects(deleted, reverse("dashboard_cases"))
+        self.assertFalse(Incident.objects.filter(pk=self.incident.pk).exists())
+        self.assertFalse(EmergencyRequest.objects.filter(pk=self.incident.request_id).exists())
+        self.assertFalse(Recording.objects.filter(pk=recording.pk).exists())
+        self.assertTrue(SecurityEvent.objects.filter(event_type="case_delete_success", user=self.user).exists())
+
     def test_admin_can_favorite_case_and_save_clue_notes(self):
         self.client.force_login(self.user)
         response = self.client.post(reverse("dashboard_incident", args=[self.incident.pk]), {"action": "favorite"})
@@ -967,6 +1007,33 @@ class ResponderDashboardTests(TestCase):
         })
         self.assertRedirects(response, reverse("institution_portal"))
         self.assertEqual(response.wsgi_request.user, institution.user)
+
+    def test_police_login_uses_the_exact_selected_district_account(self):
+        parent_area = LocationArea.objects.create(name="Test Masaka District", district="Test Masaka District")
+        child_area = LocationArea.objects.create(name="Test Masaka City", district="Test Masaka City")
+        city_user = get_user_model().objects.create_user(username="test-masaka-city-police", password="city-private-pass")
+        InstitutionProfile.objects.create(
+            username="Test Masaka City",
+            institution_type="police",
+            institution_name="Test Masaka City Police Station",
+            area=child_area,
+            user=city_user,
+        )
+        district_user = get_user_model().objects.create_user(username="test-masaka-district-police", password="2564")
+        InstitutionProfile.objects.create(
+            username="Test Masaka District",
+            institution_type="police",
+            institution_name="Test Masaka District Police Station",
+            area=parent_area,
+            user=district_user,
+        )
+        response = self.client.post(reverse("institution_login"), {
+            "institution_type": "police",
+            "district": parent_area.pk,
+            "password": "2564",
+        })
+        self.assertRedirects(response, reverse("institution_portal"))
+        self.assertEqual(response.wsgi_request.user, district_user)
 
     def test_active_filter_and_map_include_only_open_incidents_with_coordinates(self):
         self.incident.request.latitude = "-0.340000"

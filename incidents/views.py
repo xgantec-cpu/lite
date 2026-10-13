@@ -5,6 +5,7 @@ from django.contrib.auth.hashers import check_password
 from django.contrib.auth.decorators import login_required
 from django.conf import settings
 from django.core.cache import cache
+from django.core.files.storage import default_storage
 from django.db import IntegrityError, transaction
 from django.db.models import Count, Q
 from django.http import FileResponse, HttpRequest, HttpResponse, HttpResponseForbidden, JsonResponse
@@ -15,6 +16,7 @@ from urllib.parse import quote_plus
 from django.utils import timezone
 from decimal import Decimal, InvalidOperation
 import hashlib
+import logging
 import math
 import mimetypes
 import re
@@ -48,6 +50,7 @@ MFA_SURFACE_LABELS = {
     "admin": "main administration",
 }
 ALLOWED_AUDIO_EXTENSIONS = {".webm", ".ogg", ".mp3", ".m4a", ".wav"}
+logger = logging.getLogger(__name__)
 
 
 def _is_allowed_upload(upload, content_types, extensions):
@@ -402,6 +405,18 @@ def _location_trail(case_request):
         [float(latitude), float(longitude)]
         for latitude, longitude in case_request.location_pings.order_by("created_at", "pk").values_list("latitude", "longitude")
     ]
+
+
+def _delete_incident_files(file_names):
+    for file_name in set(file_names):
+        if not file_name:
+            continue
+        if Recording.objects.filter(file=file_name).exists() or EmergencyChatMessage.objects.filter(audio=file_name).exists():
+            continue
+        try:
+            default_storage.delete(file_name)
+        except (OSError, ValueError):
+            logger.warning("Could not delete incident media file %s", file_name, exc_info=True)
 
 
 @transaction.atomic
@@ -1040,7 +1055,7 @@ def institution_login(request: HttpRequest) -> HttpResponse:
         if district_id and institution_type == "hospital" and hospital_id:
             selected_profile = InstitutionProfile.objects.filter(
                 institution_type="hospital",
-                area_id__in=matching_area_ids(district_id),
+                area_id=district_id,
                 hospital_facility_id=hospital_id,
                 active=True,
                 user__is_active=True,
@@ -1048,12 +1063,14 @@ def institution_login(request: HttpRequest) -> HttpResponse:
         elif district_id and institution_type == "police":
             selected_profile = InstitutionProfile.objects.filter(
                 institution_type="police",
-                area_id__in=matching_area_ids(district_id),
+                area_id=district_id,
                 active=True,
                 user__is_active=True,
             ).select_related("user").first()
         if selected_profile:
             login_username = selected_profile.user.username
+        elif district_id:
+            login_username = ""
         else:
             legacy_user = get_user_model().objects.filter(
                 username__iexact=username,
@@ -2088,6 +2105,64 @@ def dashboard_incident(request: HttpRequest, incident_id: int) -> HttpResponse:
         incident.save(update_fields=update_fields)
     if request.method == "POST":
         action = request.POST.get("action")
+        if action == "delete_case":
+            if not request.user.is_superuser:
+                record_security_event(
+                    request,
+                    "case_delete_failure",
+                    user=request.user,
+                    details={"incident_id": incident.pk, "reason": "not_superuser"},
+                )
+                return HttpResponseForbidden("Only the parent administrator can delete case data.")
+            if incident.status not in {"resolved", "closed"}:
+                messages.error(request, "Only resolved or closed cases can be permanently deleted.")
+                return redirect("dashboard_incident", incident_id=incident.pk)
+            if _rate_limited(request, f"case-delete:{request.user.pk}", limit=5, window=300):
+                record_security_event(
+                    request,
+                    "case_delete_failure",
+                    user=request.user,
+                    details={"incident_id": incident.pk, "reason": "throttled"},
+                )
+                messages.error(request, "Too many deletion attempts. Please wait five minutes.")
+                return redirect("dashboard_incident", incident_id=incident.pk)
+            if not check_password(request.POST.get("delete_passcode", ""), settings.CASE_DELETE_PASSWORD_HASH):
+                record_security_event(
+                    request,
+                    "case_delete_failure",
+                    user=request.user,
+                    details={"incident_id": incident.pk, "reason": "invalid_passcode"},
+                )
+                messages.error(request, "The case deletion passcode is incorrect.")
+                return redirect("dashboard_incident", incident_id=incident.pk)
+
+            incident_id = incident.pk
+            case_request = incident.request
+            request_id = case_request.request_id
+            media_files = list(
+                Recording.objects.filter(incident=incident).exclude(file="").values_list("file", flat=True)
+            )
+            media_files.extend(
+                EmergencyChatMessage.objects.filter(room__incident=incident)
+                .exclude(audio="")
+                .values_list("audio", flat=True)
+            )
+            with transaction.atomic():
+                incident.delete()
+                case_request.delete()
+                record_security_event(
+                    request,
+                    "case_delete_success",
+                    user=request.user,
+                    details={
+                        "incident_id": incident_id,
+                        "request_id": request_id,
+                        "media_files": len(set(media_files)),
+                    },
+                )
+            _delete_incident_files(media_files)
+            messages.success(request, f"Case {request_id} and its attached data were permanently deleted.")
+            return redirect("dashboard_cases")
         if action == "favorite":
             desired_state = request.POST.get("favorite_state")
             if desired_state == "on":
@@ -2214,6 +2289,7 @@ def dashboard_incident(request: HttpRequest, incident_id: int) -> HttpResponse:
             referral__recipient_admin__institution_profile__isnull=False,
         ).select_related("caller", "recipient", "referral"),
         "chat_referrals": chat_referrals,
+        "can_delete_case": request.user.is_superuser and incident.status in {"resolved", "closed"},
         "websocket_token": websocket_access_token(
             request,
             "case",

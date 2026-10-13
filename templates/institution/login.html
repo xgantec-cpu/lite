@@ -21,9 +21,9 @@
       {% csrf_token %}
       <label for="institution-type">Portal type</label>
       <select id="institution-type" name="institution_type"><option value="hospital">Hospital</option><option value="police">Police station</option></select>
+      <label for="district">District</label>
+      <select id="district" name="district"><option value="">Choose district</option>{% for district in districts %}<option value="{{ district.pk }}">{{ district.name }}</option>{% endfor %}</select>
       <div class="institution-hospital-login" id="hospital-login-fields">
-        <label for="district">District</label>
-        <select id="district" name="district"><option value="">Choose district</option>{% for district in districts %}<option value="{{ district.pk }}">{{ district.name }}</option>{% endfor %}</select>
         <label for="hospital">Hospital</label>
         <input id="hospital-search" type="search" placeholder="Search hospitals" autocomplete="off">
         <select id="hospital" name="hospital"><option value="">Choose a district first</option></select>

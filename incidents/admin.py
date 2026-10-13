@@ -222,6 +222,9 @@ class EmergencyRequestAdmin(admin.ModelAdmin):
     def client_reference(self, obj):
         return str(obj.client_uuid)[:8] if obj.client_uuid else "Not activated"
 
+    def has_delete_permission(self, request, obj=None):
+        return False
+
 
 @admin.register(LocationPing)
 class LocationPingAdmin(admin.ModelAdmin):
@@ -295,6 +298,9 @@ class IncidentAdmin(admin.ModelAdmin):
     def priority(self, obj):
         return obj.request.get_priority_display()
 
+    def has_delete_permission(self, request, obj=None):
+        return False
+
 
 @admin.register(IncidentFavorite)
 class IncidentFavoriteAdmin(admin.ModelAdmin):
@@ -313,6 +319,9 @@ class IncidentNoteAdmin(admin.ModelAdmin):
 @admin.register(Recording)
 class RecordingAdmin(admin.ModelAdmin):
     list_display = ("incident", "duration_seconds", "created_at")
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(Referral)
