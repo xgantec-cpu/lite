@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Quick video help</title>
-  <link rel="stylesheet" href="{% static 'css/site.css' %}?v=20261018"><link rel="stylesheet" href="{% static 'css/form-errors.css' %}?v=20261001"><link rel="stylesheet" href="{% static 'css/video-help.css' %}?v=20261020"><link rel="stylesheet" href="{% static 'css/professional.css' %}?v=20261001">
+  <link rel="stylesheet" href="{% static 'css/site.css' %}?v=20261018"><link rel="stylesheet" href="{% static 'css/form-errors.css' %}?v=20261001"><link rel="stylesheet" href="{% static 'css/video-help.css' %}?v=20261027"><link rel="stylesheet" href="{% static 'css/professional.css' %}?v=20261001">
 </head>
 <body class="quick-page">
 <header class="public-motto-header"><span>Saving lives is better.</span></header>
@@ -17,25 +17,20 @@
   {% if error %}<div class="error">{{ error }}</div>{% endif %}
   <form method="post" id="quick-form" enctype="multipart/form-data">{% csrf_token %}<input type="hidden" name="idempotency_key" value="{{ idempotency_key }}">
     <input type="hidden" name="latitude" id="quick-latitude"><input type="hidden" name="longitude" id="quick-longitude"><input type="hidden" name="location_accuracy" id="quick-accuracy"><input type="hidden" name="client_uuid" id="quick-client-uuid"><input type="hidden" name="recording_duration" id="quick-duration"><input type="file" name="video" id="quick-video-file" accept="video/*" hidden>
-    <div class="quick-preview-wrap"><video id="quick-preview" playsinline muted></video><div class="quick-overlay" id="quick-overlay"><button class="quick-overlay-trigger" type="button" id="quick-camera-toggle" aria-label="Start recording" aria-pressed="false"><span class="record-ring"></span></button><strong id="quick-overlay-label">Tap the red circle to start</strong></div><button class="quick-camera-switch" type="button" id="quick-camera-switch">Use front camera</button></div>
+    <div class="quick-preview-wrap"><video id="quick-preview" playsinline muted></video><div class="quick-overlay" id="quick-overlay"><button class="quick-overlay-trigger" type="button" id="quick-camera-toggle" aria-label="Start recording" aria-pressed="false"><span class="record-ring"></span><span class="quick-toggle-label" id="quick-toggle-label">Start</span></button><strong id="quick-overlay-label">Tap the red circle to start</strong></div><button class="quick-camera-switch" type="button" id="quick-camera-switch">Use front camera</button></div>
     <div class="quick-status"><span id="quick-status">Location will be requested when you begin.</span><strong id="quick-timer">00:00 / 00:20</strong></div>
-    <button class="record-hero" type="button" id="quick-record"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 8.5 20 6v12l-5-2.5V19H4V5h11v3.5Z"></path><circle cx="9.5" cy="12" r="2.5"></circle></svg><span>Tap to record video</span></button>
-    <div class="quick-actions" id="quick-actions" hidden><button class="secondary" type="button" id="quick-stop">Stop and send</button><button class="primary" type="button" id="quick-send">Send now</button></div>
-    <p class="quick-note">Recording stops automatically at 20 seconds. If you do not tap Send, it submits automatically 4 seconds after stopping.</p>
+    <p class="quick-note">Tap Start to record and Stop to finish. The video submits automatically after recording, or at 20 seconds.</p>
   </form>
 </main>
 <script>
 const quickForm = document.getElementById('quick-form');
-const quickRecord = document.getElementById('quick-record');
-const quickStop = document.getElementById('quick-stop');
-const quickSend = document.getElementById('quick-send');
-const quickActions = document.getElementById('quick-actions');
 const quickPreview = document.getElementById('quick-preview');
 const quickStatus = document.getElementById('quick-status');
 const quickTimer = document.getElementById('quick-timer');
 const quickFile = document.getElementById('quick-video-file');
 const quickOverlay = document.getElementById('quick-overlay');
 const quickOverlayLabel = document.getElementById('quick-overlay-label');
+const quickToggleLabel = document.getElementById('quick-toggle-label');
 const quickCameraToggle = document.getElementById('quick-camera-toggle');
 const quickCameraSwitch = document.getElementById('quick-camera-switch');
 let quickRecorder, quickStream, quickChunks = [], quickStarted, quickInterval, quickAutoSubmit, quickSubmitAfterStop = false;
@@ -93,10 +88,11 @@ function quickCameraLabel() {
 
 async function quickOpenCamera() {
   if (quickStream && quickStream.getVideoTracks().some((track) => track.readyState === 'live')) return true;
-  quickStream = await navigator.mediaDevices.getUserMedia({
-    video: {facingMode: {ideal: quickFacingMode}},
-    audio: true,
-  });
+  try {
+    quickStream = await navigator.mediaDevices.getUserMedia({video: {facingMode: {exact: quickFacingMode}}, audio: true});
+  } catch (error) {
+    quickStream = await navigator.mediaDevices.getUserMedia({video: {facingMode: {ideal: quickFacingMode}}, audio: true});
+  }
   quickPreview.srcObject = quickStream;
   await quickPreview.play();
   quickCameraSwitch.textContent = quickCameraLabel();
@@ -159,12 +155,11 @@ async function quickStartRecording() {
     quickRecorder.onstop = quickFinishRecording;
     quickRecorder.start();
     quickStarted = Date.now();
-    quickRecord.hidden = true;
-    quickActions.hidden = false;
     quickOverlay.classList.add('is-recording');
     quickOverlayLabel.textContent = 'Recording — tap the red circle to stop';
     quickCameraToggle.setAttribute('aria-label', 'Stop recording');
     quickCameraToggle.setAttribute('aria-pressed', 'true');
+    quickToggleLabel.textContent = 'Stop';
     quickStatus.textContent = 'Recording now — show what is happening';
     quickInterval = setInterval(quickTick, 250);
   } catch (error) {
@@ -178,8 +173,7 @@ function quickStopRecording(submitAfterStop = false) {
   quickRecorder.stop();
   clearInterval(quickInterval);
   if (quickStream) quickStream.getTracks().forEach((track) => track.stop());
-  quickStop.disabled = true;
-  quickStatus.textContent = submitAfterStop ? 'Video ready — sending now' : 'Video ready — sending automatically in 4 seconds';
+  quickStatus.textContent = 'Video ready — sending automatically';
 }
 
 function quickFinishRecording() {
@@ -194,6 +188,7 @@ function quickFinishRecording() {
   quickCameraSwitch.hidden = true;
   quickCameraToggle.setAttribute('aria-label', 'Start recording');
   quickCameraToggle.setAttribute('aria-pressed', 'false');
+  quickToggleLabel.textContent = 'Start';
   if (quickSubmitAfterStop) {
     quickSubmitAfterStop = false;
     quickForm.requestSubmit();
@@ -207,17 +202,8 @@ function quickToggleRecording() {
   else quickStartRecording();
 }
 
-quickRecord.addEventListener('click', quickToggleRecording);
 quickCameraToggle.addEventListener('click', quickToggleRecording);
 quickCameraSwitch.addEventListener('click', quickSwitchCamera);
-quickStop.addEventListener('click', () => quickStopRecording(true));
-quickSend.addEventListener('click', () => {
-  if (quickRecorder && quickRecorder.state !== 'inactive') {
-    quickStopRecording(true);
-    return;
-  }
-  if (quickFile.files.length) quickForm.requestSubmit();
-});
 quickForm.addEventListener('submit', () => clearTimeout(quickAutoSubmit));
 </script>
 </body></html>

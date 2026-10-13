@@ -506,10 +506,13 @@
 }
 
 .quick-overlay-trigger {
-  display: grid;
-  width: 112px;
-  height: 112px;
-  place-items: center;
+  display: flex;
+  width: 140px;
+  height: 140px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   padding: 0;
   border: 0;
   border-radius: 50%;
@@ -535,6 +538,15 @@
 
 .quick-overlay-trigger:active .record-ring {
   transform: scale(.95);
+}
+
+.quick-toggle-label {
+  color: #fff;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: .04em;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, .45);
+  text-transform: uppercase;
 }
 
 .quick-overlay.is-recording {
@@ -582,7 +594,7 @@
   border: 1px solid rgba(255, 255, 255, .92);
   border-radius: 999px;
   color: #fff;
-  background: linear-gradient(135deg, #159fd4, #5b4acb 58%, #d64161);
+  background: #35b7e8;
   font: inherit;
   font-size: 12px;
   font-weight: 900;
@@ -595,7 +607,8 @@
 
 .quick-camera-switch:hover,
 .quick-camera-switch:focus-visible {
-  filter: saturate(1.18) brightness(1.08);
+  background: #159fd4;
+  filter: brightness(1.08);
   box-shadow: 0 10px 24px rgba(15, 55, 92, .48), 0 0 0 3px rgba(255, 255, 255, .18);
   transform: translateY(-2px);
 }
