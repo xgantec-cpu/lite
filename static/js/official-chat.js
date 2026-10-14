@@ -6,6 +6,7 @@
   const launcher = widget.querySelector("[data-chat-launcher]");
   const panel = widget.querySelector("[data-chat-panel]");
   const closeButton = widget.querySelector("[data-chat-close]");
+  const expandButton = widget.querySelector("[data-chat-expand]");
   const form = widget.querySelector("[data-chat-form]");
   const bodyField = widget.querySelector("[data-chat-body]");
   const messages = widget.querySelector("[data-chat-messages]");
@@ -15,6 +16,7 @@
   const websocketUrlTemplate = widget.dataset.chatWsUrlTemplate;
   const csrfToken = widget.dataset.csrf;
   let isOpen = false;
+  let isExpanded = false;
   let socket;
   let reconnectTimer;
 
@@ -38,6 +40,16 @@
     badge.textContent = count > 99 ? "99+" : String(count);
     badge.hidden = count < 1;
     launcher.classList.toggle("has-unread", count > 0);
+  }
+
+  function setExpanded(expanded) {
+    isExpanded = expanded;
+    panel.classList.toggle("is-expanded", expanded);
+    document.body.classList.toggle("chat-panel-expanded", expanded);
+    if (!expandButton) return;
+    expandButton.setAttribute("aria-expanded", String(expanded));
+    expandButton.setAttribute("aria-label", expanded ? "Collapse chat" : "Expand chat");
+    expandButton.textContent = expanded ? "↙" : "↗";
   }
 
   function renderMessages(items) {
@@ -113,7 +125,12 @@
   closeButton.addEventListener("click", () => {
     isOpen = false;
     panel.hidden = true;
+    setExpanded(false);
     launcher.setAttribute("aria-expanded", "false");
+  });
+  if (expandButton) expandButton.addEventListener("click", () => setExpanded(!isExpanded));
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && isExpanded) setExpanded(false);
   });
   if (referralSelect) referralSelect.addEventListener("change", () => {
     if (socket) socket.close();

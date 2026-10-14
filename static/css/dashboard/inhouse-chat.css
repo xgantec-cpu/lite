@@ -76,3 +76,62 @@
   .inhouse-compose { grid-template-columns: 1fr; }
   .inhouse-compose button { min-height: 42px; }
 }
+
+.inhouse-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.inhouse-expand-button {
+  min-height: 32px;
+  padding: 6px 10px;
+  border: 1px solid #8bd6ef;
+  border-radius: 8px;
+  color: #fff;
+  background: #159fd4;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.inhouse-expand-button:hover {
+  background: #0c86b5;
+}
+
+.inhouse-conversation.is-expanded {
+  position: fixed;
+  inset: 22px;
+  z-index: 1300;
+  min-height: 0;
+  height: calc(100vh - 44px);
+  border: 1px solid #a8dced;
+  border-radius: 18px;
+  box-shadow: 0 24px 80px rgba(12, 30, 52, .34);
+}
+
+.inhouse-conversation.is-expanded .inhouse-messages {
+  max-height: none;
+  min-height: 0;
+}
+
+body.inhouse-chat-expanded {
+  overflow: hidden;
+}
+
+@media (max-width: 760px) {
+  .inhouse-conversation.is-expanded {
+    inset: 10px;
+    height: calc(100vh - 20px);
+    border-radius: 14px;
+  }
+
+  .inhouse-header-actions {
+    gap: 6px;
+  }
+
+  .inhouse-secure-label {
+    display: none;
+  }
+}

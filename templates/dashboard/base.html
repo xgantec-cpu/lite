@@ -15,13 +15,13 @@
     } catch (error) {}
   </script>
   <title>{% block title %}Responder dashboard{% endblock %} · Rapid Response</title>
-  <link rel="stylesheet" href="{% static 'css/dashboard/dashboard.css' %}?v=20261027">
+  <link rel="stylesheet" href="{% static 'css/dashboard/dashboard.css' %}?v=20261028">
   <link rel="stylesheet" href="{% static 'css/dashboard/map.css' %}?v=20261004">
   <link rel="stylesheet" href="{% static 'css/dashboard/referrals.css' %}?v=20261001">
-  <link rel="stylesheet" href="{% static 'css/dashboard/uichat-theme.css' %}?v=20261071">
+  <link rel="stylesheet" href="{% static 'css/dashboard/uichat-theme.css' %}?v=20261072">
   {% block extra_css %}{% endblock %}
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
-  <link rel="stylesheet" href="{% static 'css/dashboard/dark-mode.css' %}?v=20261027">
+  <link rel="stylesheet" href="{% static 'css/dashboard/dark-mode.css' %}?v=20261028">
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 </head>
 <body class="page-operations" data-session-lock-url="{% url 'dashboard_logout' %}">
@@ -31,17 +31,17 @@
       <button class="sidebar-toggle" id="sidebar-toggle" type="button" aria-expanded="true" aria-controls="dashboard-sidebar"><span class="sidebar-toggle-icon" aria-hidden="true">‹</span><span class="sidebar-toggle-label">Collapse menu</span></button>
       <div class="workspace-label">Operations centre</div>
       <nav>
-        <a class="nav-link nav-severity-{{ dashboard_nav_severity|default:'normal' }} {% if request.resolver_match.url_name == 'dashboard_incoming' %}active{% endif %}" href="{% url 'dashboard_incoming' %}"><span>▦</span> Incoming incidents{% if dashboard_nav_count %}<b class="nav-count">{{ dashboard_nav_count }}</b>{% endif %}</a>
-        <a class="nav-link {% if request.resolver_match.url_name == 'dashboard_home' or request.resolver_match.url_name == 'dashboard_area_activity' %}active{% endif %}" href="{% url 'dashboard_home' %}"><span>▣</span> Cases by district</a>
-        <a class="nav-link {% if request.resolver_match.url_name == 'dashboard_global_map' %}active{% endif %}" href="{% url 'dashboard_global_map' %}"><span>◎</span> Global case map</a>
-        <a class="nav-link {% if request.resolver_match.url_name == 'inhouse_chat' %}active{% endif %}" href="{% url 'inhouse_chat' %}"><span>⌁</span> In-house chat</a>
-        <a class="nav-link {% if request.resolver_match.url_name == 'dashboard_cases' %}active{% endif %}" href="{% url 'dashboard_cases' %}"><span>◫</span> Cases archive</a>
-        <a class="nav-link {% if request.resolver_match.url_name == 'dashboard_favorites' %}active{% endif %}" href="{% url 'dashboard_favorites' %}"><span>★</span> Favorites</a>
-        <a class="nav-link {% if request.resolver_match.url_name == 'dashboard_referral_inbox' %}active{% endif %}" href="{% url 'dashboard_referral_inbox' %}"><span>↗</span> Referral inbox</a>
-        <a class="nav-link {% if request.resolver_match.url_name == 'dashboard_referral_token' %}active{% endif %}" href="{% url 'dashboard_referral_token' %}"><span>⌁</span> Open referral token</a>
+        <a class="nav-link nav-severity-{{ dashboard_nav_severity|default:'normal' }} {% if request.resolver_match.url_name == 'dashboard_incoming' %}active{% endif %}" data-mini-label="Incoming" href="{% url 'dashboard_incoming' %}"><span>▦</span> Incoming incidents{% if dashboard_nav_count %}<b class="nav-count">{{ dashboard_nav_count }}</b>{% endif %}</a>
+        <a class="nav-link {% if request.resolver_match.url_name == 'dashboard_home' or request.resolver_match.url_name == 'dashboard_area_activity' %}active{% endif %}" data-mini-label="Districts" href="{% url 'dashboard_home' %}"><span>▣</span> Cases by district</a>
+        <a class="nav-link {% if request.resolver_match.url_name == 'dashboard_global_map' %}active{% endif %}" data-mini-label="Map" href="{% url 'dashboard_global_map' %}"><span>◎</span> Global case map</a>
+        <a class="nav-link {% if request.resolver_match.url_name == 'inhouse_chat' %}active{% endif %}" data-mini-label="Chat" href="{% url 'inhouse_chat' %}"><span>⌁</span> In-house chat</a>
+        <a class="nav-link {% if request.resolver_match.url_name == 'dashboard_cases' %}active{% endif %}" data-mini-label="Archive" href="{% url 'dashboard_cases' %}"><span>◫</span> Cases archive</a>
+        <a class="nav-link {% if request.resolver_match.url_name == 'dashboard_favorites' %}active{% endif %}" data-mini-label="Favorites" href="{% url 'dashboard_favorites' %}"><span>★</span> Favorites</a>
+        <a class="nav-link {% if request.resolver_match.url_name == 'dashboard_referral_inbox' %}active{% endif %}" data-mini-label="Referrals" href="{% url 'dashboard_referral_inbox' %}"><span>↗</span> Referral inbox</a>
+        <a class="nav-link {% if request.resolver_match.url_name == 'dashboard_referral_token' %}active{% endif %}" data-mini-label="Tokens" href="{% url 'dashboard_referral_token' %}"><span>⌁</span> Open referral token</a>
         {% if request.user.is_superuser %}
-        <a class="nav-link {% if request.resolver_match.url_name == 'operations_center' %}active{% endif %}" href="{% url 'operations_center' %}"><span>⌕</span> Operations Center</a>
-        <a class="nav-link" href="{% url 'admin_section_gate' %}"><span>⚙</span> Main administration</a>
+        <a class="nav-link {% if request.resolver_match.url_name == 'operations_center' %}active{% endif %}" data-mini-label="Ops" href="{% url 'operations_center' %}"><span>⌕</span> Operations Center</a>
+        <a class="nav-link" data-mini-label="Admin" href="{% url 'admin_section_gate' %}"><span>⚙</span> Main administration</a>
         {% endif %}
       </nav>
       <div class="sidebar-bottom">

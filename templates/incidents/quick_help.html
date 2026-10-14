@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Quick video help</title>
-  <link rel="stylesheet" href="{% static 'css/site.css' %}?v=20261018"><link rel="stylesheet" href="{% static 'css/form-errors.css' %}?v=20261001"><link rel="stylesheet" href="{% static 'css/video-help.css' %}?v=20261027"><link rel="stylesheet" href="{% static 'css/professional.css' %}?v=20261001">
+  <link rel="stylesheet" href="{% static 'css/site.css' %}?v=20261018"><link rel="stylesheet" href="{% static 'css/form-errors.css' %}?v=20261001"><link rel="stylesheet" href="{% static 'css/video-help.css' %}?v=20261028"><link rel="stylesheet" href="{% static 'css/professional.css' %}?v=20261001">
 </head>
 <body class="quick-page">
 <header class="public-motto-header"><span>Saving lives is better.</span></header>
@@ -19,7 +19,7 @@
     <input type="hidden" name="latitude" id="quick-latitude"><input type="hidden" name="longitude" id="quick-longitude"><input type="hidden" name="location_accuracy" id="quick-accuracy"><input type="hidden" name="client_uuid" id="quick-client-uuid"><input type="hidden" name="recording_duration" id="quick-duration"><input type="file" name="video" id="quick-video-file" accept="video/*" hidden>
     <div class="quick-preview-wrap"><video id="quick-preview" playsinline muted></video><div class="quick-overlay" id="quick-overlay"><button class="quick-overlay-trigger" type="button" id="quick-camera-toggle" aria-label="Start recording" aria-pressed="false"><span class="record-ring"></span><span class="quick-toggle-label" id="quick-toggle-label">Start</span></button><strong id="quick-overlay-label">Tap the red circle to start</strong></div><button class="quick-camera-switch" type="button" id="quick-camera-switch">Use front camera</button></div>
     <div class="quick-status"><span id="quick-status">Location will be requested when you begin.</span><strong id="quick-timer">00:00 / 00:20</strong></div>
-    <p class="quick-note">Tap Start to record and Stop to finish. The video submits automatically after recording, or at 20 seconds.</p>
+    <p class="quick-note">Tap Start to record and Stop to finish. The video submits automatically after recording, or at 20 seconds. Quality adapts to your connection: 480p, 720p, or 1080p.</p>
   </form>
 </main>
 <script>
@@ -82,16 +82,57 @@ function quickTick() {
   if (elapsed >= 20) quickStopRecording();
 }
 
+function quickQualityProfile() {
+  const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+  const effectiveType = connection && connection.effectiveType;
+  const downlink = Number(connection && connection.downlink);
+  if (connection && connection.saveData || effectiveType === 'slow-2g' || effectiveType === '2g' || (downlink && downlink < 1)) {
+    return {label: '480p', width: 854, height: 480, videoBitsPerSecond: 650000};
+  }
+  if (effectiveType === '3g' || (downlink && downlink < 3)) {
+    return {label: '720p', width: 1280, height: 720, videoBitsPerSecond: 1400000};
+  }
+  return {label: '1080p', width: 1920, height: 1080, videoBitsPerSecond: 2400000};
+}
+
+function quickQualityConstraints(profile) {
+  return {
+    width: {ideal: profile.width, max: profile.width},
+    height: {ideal: profile.height, max: profile.height},
+  };
+}
+
+function quickApplyQuality(profile) {
+  const track = quickStream && quickStream.getVideoTracks()[0];
+  if (!track || typeof track.applyConstraints !== 'function') return Promise.resolve();
+  return track.applyConstraints(quickQualityConstraints(profile)).catch(() => {});
+}
+
+function quickRecorderOptions(profile) {
+  const options = {videoBitsPerSecond: profile.videoBitsPerSecond, audioBitsPerSecond: 64000};
+  const mimeTypes = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/mp4'];
+  const supported = mimeTypes.find((type) => typeof MediaRecorder.isTypeSupported !== 'function' || MediaRecorder.isTypeSupported(type));
+  if (supported) options.mimeType = supported;
+  return options;
+}
+
 function quickCameraLabel() {
   return quickFacingMode === 'environment' ? 'Use front camera' : 'Use back camera';
 }
 
 async function quickOpenCamera() {
   if (quickStream && quickStream.getVideoTracks().some((track) => track.readyState === 'live')) return true;
+  const profile = quickQualityProfile();
+  const video = Object.assign({facingMode: {exact: quickFacingMode}}, quickQualityConstraints(profile));
   try {
-    quickStream = await navigator.mediaDevices.getUserMedia({video: {facingMode: {exact: quickFacingMode}}, audio: true});
+    quickStream = await navigator.mediaDevices.getUserMedia({video, audio: true});
   } catch (error) {
-    quickStream = await navigator.mediaDevices.getUserMedia({video: {facingMode: {ideal: quickFacingMode}}, audio: true});
+    try {
+      video.facingMode = {ideal: quickFacingMode};
+      quickStream = await navigator.mediaDevices.getUserMedia({video, audio: true});
+    } catch (fallbackError) {
+      quickStream = await navigator.mediaDevices.getUserMedia({video: {facingMode: {ideal: quickFacingMode}}, audio: true});
+    }
   }
   quickPreview.srcObject = quickStream;
   await quickPreview.play();
@@ -149,8 +190,14 @@ async function quickStartRecording() {
   try {
     await quickLocation();
     await quickOpenCamera();
+    const quality = quickQualityProfile();
+    await quickApplyQuality(quality);
     quickChunks = [];
-    quickRecorder = new MediaRecorder(quickStream);
+    try {
+      quickRecorder = new MediaRecorder(quickStream, quickRecorderOptions(quality));
+    } catch (error) {
+      quickRecorder = new MediaRecorder(quickStream);
+    }
     quickRecorder.ondataavailable = (event) => { if (event.data.size) quickChunks.push(event.data); };
     quickRecorder.onstop = quickFinishRecording;
     quickRecorder.start();
@@ -160,7 +207,7 @@ async function quickStartRecording() {
     quickCameraToggle.setAttribute('aria-label', 'Stop recording');
     quickCameraToggle.setAttribute('aria-pressed', 'true');
     quickToggleLabel.textContent = 'Stop';
-    quickStatus.textContent = 'Recording now — show what is happening';
+    quickStatus.textContent = 'Recording at ' + quality.label + ' — show what is happening';
     quickInterval = setInterval(quickTick, 250);
   } catch (error) {
     quickStatus.textContent = 'Camera permission was not granted';
@@ -177,9 +224,11 @@ function quickStopRecording(submitAfterStop = false) {
 }
 
 function quickFinishRecording() {
-  const blob = new Blob(quickChunks, {type: quickRecorder.mimeType || 'video/webm'});
+  const mimeType = quickRecorder.mimeType || 'video/webm';
+  const blob = new Blob(quickChunks, {type: mimeType});
+  const extension = mimeType.includes('mp4') ? 'mp4' : 'webm';
   const transfer = new DataTransfer();
-  transfer.items.add(new File([blob], 'emergency-' + Date.now() + '.webm', {type: blob.type}));
+  transfer.items.add(new File([blob], 'emergency-' + Date.now() + '.' + extension, {type: mimeType}));
   quickFile.files = transfer.files;
   document.getElementById('quick-duration').value = Math.min(20, Math.max(1, Math.round((Date.now() - quickStarted) / 1000)));
   quickPreview.srcObject = null;

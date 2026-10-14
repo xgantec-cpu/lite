@@ -80,13 +80,13 @@
 <div class="official-chat-widget" data-chat-widget data-chat-url-template="{% url 'case_chat_feed' referral_id=0 %}" data-chat-ws-url-template="/ws/institution/chat/0/?token={{ websocket_token|urlencode }}" data-csrf="{{ csrf_token }}" data-referral-id="{{ chat_referrals.0.pk }}">
   <button class="official-chat-launcher" data-chat-launcher type="button" aria-label="Open official case chat" aria-expanded="false"><span class="official-chat-icon">⌁</span><b data-chat-unread hidden>0</b></button>
   <section class="official-chat-panel" data-chat-panel hidden aria-label="Official case chat">
-    <header><div><strong>Official case chat</strong><small>Secure in-house communication</small></div><button data-chat-close type="button" aria-label="Close chat">×</button></header>
+    <header><div><strong>Official case chat</strong><small>Secure in-house communication</small></div><div class="official-chat-header-actions"><button data-chat-expand type="button" aria-label="Expand chat" aria-expanded="false">↗</button><button data-chat-close type="button" aria-label="Close chat">×</button></div></header>
     {% if chat_referrals|length > 1 %}<label class="official-chat-select-label" for="chat-referral">Case conversation</label><select data-chat-referral id="chat-referral">{% for chat_referral in chat_referrals %}<option value="{{ chat_referral.pk }}">{{ chat_referral.target_name }} · {{ chat_referral.incident.request.request_id }}</option>{% endfor %}</select>{% endif %}
     <div class="official-chat-messages" data-chat-messages></div>
     <form data-chat-form><textarea data-chat-body rows="2" maxlength="4000" placeholder="Write an official update…" required></textarea><button type="submit">Send <span>→</span></button></form>
   </section>
 </div>
-<script src="{% static 'js/official-chat.js' %}?v=20261002"></script>
+<script src="{% static 'js/official-chat.js' %}?v=20261028"></script>
 {% endif %}
 {% if emergency_chat_room and emergency_chat_allowed %}
 <a class="emergency-chat-dashboard-link" href="{% url 'emergency_chat_page' incident.pk %}"><span class="emergency-chat-invite-icon">◌</span><span><strong>Open sender chat</strong><small>Use the full-screen secure conversation for {{ incident.request.request_id }}.</small></span><b>Open chat →</b></a>

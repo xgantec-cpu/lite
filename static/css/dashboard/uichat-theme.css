@@ -3006,3 +3006,60 @@ html[data-theme="dark"] .leaflet-control-zoom a {
     height: 400px;
   }
 }
+
+.nav-link > span {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 4px 10px rgba(24, 20, 91, 0.18);
+  color: #f0efff;
+  font-size: 17px;
+  line-height: 1;
+}
+
+.nav-link:hover > span,
+.nav-link.active > span {
+  border-color: rgba(255, 255, 255, 0.48);
+  background: rgba(255, 255, 255, 0.24);
+  color: #fff;
+}
+
+.sidebar-collapsed .nav-link {
+  flex-direction: column;
+  gap: 4px;
+  padding: 9px 6px;
+}
+
+.sidebar-collapsed .nav-link::after {
+  color: rgba(255, 255, 255, 0.82);
+  content: attr(data-mini-label);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.sidebar-collapsed .nav-link > span {
+  width: 34px;
+  height: 34px;
+  flex-basis: 34px;
+  border-radius: 11px;
+  box-shadow: 0 5px 12px rgba(24, 20, 91, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  font-size: 18px;
+}
+
+.sidebar-collapsed .nav-link.active::after {
+  color: #5b56b3;
+}
+
+.sidebar-collapsed .nav-link.active > span {
+  border-color: rgba(91, 86, 179, 0.2);
+  background: #eef0ff;
+  color: #5b56b3;
+}

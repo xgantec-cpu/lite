@@ -2,7 +2,7 @@
 {% load static %}
 
 {% block title %}In-house chat{% endblock %}
-{% block extra_css %}<link rel="stylesheet" href="{% static 'css/dashboard/inhouse-chat.css' %}?v=20261001">{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'css/dashboard/inhouse-chat.css' %}?v=20261028">{% endblock %}
 
 {% block content %}
 <div class="page-heading inhouse-heading">
@@ -32,7 +32,7 @@
 
   <section class="inhouse-conversation{% if not selected_profile %} is-empty{% endif %}" data-inhouse-conversation data-conversation-id="{% if conversation %}{{ conversation.pk }}{% endif %}" data-websocket-token="{{ websocket_token|escapejs }}" data-feed-url="{% if selected_profile %}{% url 'inhouse_chat' %}?format=json&peer={{ selected_profile.user_id }}{% endif %}">
     {% if selected_profile %}
-    <header class="inhouse-conversation-header"><div><span class="inhouse-kicker">Direct channel</span><h2>{{ selected_code }}</h2><small>{{ selected_profile.get_role_display }} · District response ID</small></div><span class="inhouse-secure-label">● Secure</span></header>
+    <header class="inhouse-conversation-header"><div><span class="inhouse-kicker">Direct channel</span><h2>{{ selected_code }}</h2><small>{{ selected_profile.get_role_display }} · District response ID</small></div><div class="inhouse-header-actions"><span class="inhouse-secure-label">● Secure</span><button class="inhouse-expand-button" data-inhouse-expand type="button" aria-label="Expand chat" aria-expanded="false">Expand</button></div></header>
     <div class="inhouse-messages" data-inhouse-messages aria-live="polite">
       {% for item in conversation_messages %}
       <article class="inhouse-message{% if item.sender_id == request.user.pk %} mine{% endif %}"><p>{{ item.body }}</p><small>{% if item.sender_id == request.user.pk %}{{ current_code }}{% else %}{{ selected_code }}{% endif %} · {{ item.created_at|date:"d M Y · H:i" }}</small></article>
@@ -61,6 +61,16 @@
     const token = shell.dataset.websocketToken;
     const conversationId = shell.dataset.conversationId;
     const currentCode = "{{ current_code|default:'non'|escapejs }}";
+    const expandButton = document.querySelector('[data-inhouse-expand]');
+
+    const setExpanded = (expanded) => {
+      shell.classList.toggle('is-expanded', expanded);
+      document.body.classList.toggle('inhouse-chat-expanded', expanded);
+      if (!expandButton) return;
+      expandButton.setAttribute('aria-expanded', String(expanded));
+      expandButton.setAttribute('aria-label', expanded ? 'Collapse chat' : 'Expand chat');
+      expandButton.textContent = expanded ? 'Collapse' : 'Expand';
+    };
 
     const scrollMessages = () => { messages.scrollTop = messages.scrollHeight; };
     const renderMessages = (items) => {
@@ -104,6 +114,10 @@
         button.disabled = false;
         body.focus();
       }
+    });
+    if (expandButton) expandButton.addEventListener('click', () => setExpanded(!shell.classList.contains('is-expanded')));
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && shell.classList.contains('is-expanded')) setExpanded(false);
     });
     scrollMessages();
     if (token && conversationId && window.WebSocket) {
