@@ -24,7 +24,7 @@ if not FIELD_ENCRYPTION_KEY:
     ).decode()
 ALLOWED_HOSTS = [host.strip() for host in os.getenv("DJANGO_ALLOWED_HOSTS", "").split(",") if host.strip()]
 if DEBUG and not ALLOWED_HOSTS:
-    ALLOWED_HOSTS = ["localhost", "127.0.0.1", "[::1]", "testserver"]
+    ALLOWED_HOSTS = ["localhost", "127.0.0.1", "[::1]", "testserver", " helpug.pythonanywhere.com "]
 if not DEBUG and not ALLOWED_HOSTS:
     raise ImproperlyConfigured("DJANGO_ALLOWED_HOSTS must be set when DJANGO_DEBUG=0.")
 CSRF_TRUSTED_ORIGINS = [
