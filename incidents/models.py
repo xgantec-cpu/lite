@@ -101,7 +101,11 @@ class InHouseMessage(models.Model):
     conversation = models.ForeignKey(InHouseConversation, on_delete=models.CASCADE, related_name="messages")
     sender = models.ForeignKey(get_user_model(), on_delete=models.CASCADE, related_name="inhouse_messages_sent")
     recipient = models.ForeignKey(get_user_model(), on_delete=models.CASCADE, related_name="inhouse_messages_received")
-    body = EncryptedTextField(max_length=4000)
+    body = EncryptedTextField(blank=True, max_length=4000)
+    attachment = models.FileField(upload_to="inhouse_chat_files/", blank=True)
+    attachment_name = models.CharField(max_length=255, blank=True)
+    attachment_content_type = models.CharField(max_length=120, blank=True)
+    attachment_size = models.PositiveBigIntegerField(null=True, blank=True)
     idempotency_key = models.CharField(max_length=64, unique=True, null=True, blank=True, editable=False)
     created_at = models.DateTimeField(auto_now_add=True)
     read_at = models.DateTimeField(null=True, blank=True)
@@ -146,7 +150,7 @@ class EmergencyRequest(models.Model):
     latitude = EncryptedDecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     longitude = EncryptedDecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     location_accuracy = EncryptedDecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
-    location_source = models.CharField(max_length=20, choices=[("gps", "Device GPS"), ("user", "User provided"), ("network", "Network estimate")], default="user")
+    location_source = models.CharField(max_length=20, choices=[("gps", "Device GPS"), ("cached", "Last known browser GPS"), ("user", "User provided"), ("network", "Network estimate")], default="user")
     location_description = EncryptedTextField(max_length=255, blank=True)
     area = models.ForeignKey(LocationArea, null=True, blank=True, on_delete=models.SET_NULL, related_name="requests")
     emergency_type = models.CharField(max_length=20, choices=EMERGENCY_TYPES, default="other")
@@ -309,6 +313,7 @@ class EmergencyChatMessage(models.Model):
     CHANNEL_CHOICES = [
         ("text", "Text message"),
         ("audio", "Audio note"),
+        ("file", "File attachment"),
         ("system", "System event"),
     ]
     SENDER_TYPES = [
@@ -324,6 +329,10 @@ class EmergencyChatMessage(models.Model):
     body = EncryptedTextField(blank=True, max_length=4000)
     audio = models.FileField(upload_to="emergency_chat_audio/", blank=True)
     audio_duration_seconds = models.PositiveIntegerField(null=True, blank=True)
+    attachment = models.FileField(upload_to="emergency_chat_files/", blank=True)
+    attachment_name = models.CharField(max_length=255, blank=True)
+    attachment_content_type = models.CharField(max_length=120, blank=True)
+    attachment_size = models.PositiveBigIntegerField(null=True, blank=True)
     read_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -511,7 +520,11 @@ class CaseMessage(models.Model):
     incident = models.ForeignKey(Incident, on_delete=models.CASCADE, related_name="case_messages")
     sender = models.ForeignKey(get_user_model(), on_delete=models.CASCADE, related_name="sent_case_messages")
     recipient = models.ForeignKey(get_user_model(), on_delete=models.CASCADE, related_name="received_case_messages")
-    body = EncryptedTextField(max_length=4000)
+    body = EncryptedTextField(blank=True, max_length=4000)
+    attachment = models.FileField(upload_to="case_chat_files/", blank=True)
+    attachment_name = models.CharField(max_length=255, blank=True)
+    attachment_content_type = models.CharField(max_length=120, blank=True)
+    attachment_size = models.PositiveBigIntegerField(null=True, blank=True)
     idempotency_key = models.CharField(max_length=64, unique=True, null=True, blank=True, editable=False)
     created_at = models.DateTimeField(auto_now_add=True)
     read_at = models.DateTimeField(null=True, blank=True)

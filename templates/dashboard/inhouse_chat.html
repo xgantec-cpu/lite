@@ -2,7 +2,7 @@
 {% load static %}
 
 {% block title %}In-house chat{% endblock %}
-{% block extra_css %}<link rel="stylesheet" href="{% static 'css/dashboard/inhouse-chat.css' %}?v=20261028">{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'css/dashboard/inhouse-chat.css' %}?v=20261033"><link rel="stylesheet" href="{% static 'css/chat-rtc.css' %}?v=20261015">{% endblock %}
 
 {% block content %}
 <div class="page-heading inhouse-heading">
@@ -30,18 +30,20 @@
     </div>
   </aside>
 
-  <section class="inhouse-conversation{% if not selected_profile %} is-empty{% endif %}" data-inhouse-conversation data-conversation-id="{% if conversation %}{{ conversation.pk }}{% endif %}" data-websocket-token="{{ websocket_token|escapejs }}" data-feed-url="{% if selected_profile %}{% url 'inhouse_chat' %}?format=json&peer={{ selected_profile.user_id }}{% endif %}">
+  <section class="inhouse-conversation{% if not selected_profile %} is-empty{% endif %}" data-inhouse-conversation{% if selected_profile %} data-rtc-widget data-rtc-ws-url="/ws/inhouse/chat/{{ conversation.pk }}/?token={{ websocket_token|urlencode }}"{% endif %} data-conversation-id="{% if conversation %}{{ conversation.pk }}{% endif %}" data-websocket-token="{{ websocket_token|escapejs }}" data-feed-url="{% if selected_profile %}{% url 'inhouse_chat' %}?format=json&peer={{ selected_profile.user_id }}{% endif %}">
     {% if selected_profile %}
     <header class="inhouse-conversation-header"><div><span class="inhouse-kicker">Direct channel</span><h2>{{ selected_code }}</h2><small>{{ selected_profile.get_role_display }} · District response ID</small></div><div class="inhouse-header-actions"><span class="inhouse-secure-label">● Secure</span><button class="inhouse-expand-button" data-inhouse-expand type="button" aria-label="Expand chat" aria-expanded="false">Expand</button></div></header>
+    <div class="rtc-call-controls" aria-label="Voice call controls"><span data-rtc-status>Ready for a secure voice call.</span><span data-rtc-mic>Microphone not connected</span><span data-rtc-timer>00:00</span><button type="button" class="rtc-call-button rtc-call-answer" data-rtc-answer hidden>Answer</button><button type="button" class="rtc-call-button rtc-call-decline" data-rtc-decline hidden>Decline</button><button type="button" class="rtc-call-button" data-rtc-call>Call</button><button type="button" class="rtc-call-button" data-rtc-end hidden>End</button><button type="button" class="rtc-call-button" data-rtc-mute hidden>Mute</button><button type="button" class="rtc-call-button" data-rtc-speaker hidden>Speaker</button><audio data-rtc-audio autoplay playsinline></audio></div>
     <div class="inhouse-messages" data-inhouse-messages aria-live="polite">
       {% for item in conversation_messages %}
-      <article class="inhouse-message{% if item.sender_id == request.user.pk %} mine{% endif %}"><p>{{ item.body }}</p><small>{% if item.sender_id == request.user.pk %}{{ current_code }}{% else %}{{ selected_code }}{% endif %} · {{ item.created_at|date:"d M Y · H:i" }}</small></article>
+      <article class="inhouse-message{% if item.sender_id == request.user.pk %} mine{% endif %}">{% if item.body %}<p>{{ item.body }}</p>{% endif %}{% if item.attachment %}<a href="{% url 'inhouse_chat_file' item.pk %}" target="_blank" rel="noreferrer">📎 {{ item.attachment_name|default:"Attached file" }}</a>{% endif %}<small>{% if item.sender_id == request.user.pk %}{{ current_code }}{% else %}{{ selected_code }}{% endif %} · {{ item.created_at|date:"d M Y · H:i" }}</small></article>
       {% empty %}<p class="inhouse-chat-empty">Start a secure conversation with {{ selected_code }}.</p>{% endfor %}
     </div>
     <form class="inhouse-compose" data-inhouse-form method="post" action="?peer={{ selected_profile.user_id }}">
       {% csrf_token %}
       <input type="hidden" name="peer" value="{{ selected_profile.user_id }}">
-      <textarea name="body" data-inhouse-body rows="2" maxlength="4000" placeholder="Write an update to {{ selected_code }}…" required></textarea>
+      <textarea name="body" data-inhouse-body rows="2" maxlength="4000" placeholder="Write an update to {{ selected_code }}…"></textarea>
+      <label class="inhouse-chat-file">Attach file<input type="file" name="file" data-inhouse-file accept=".pdf,.json,.zip,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.jpg,.jpeg,.png,.gif,.webp,.webm,.ogg,.mp3,.m4a,.wav,.mp4,.mov"></label><small class="inhouse-file-name" data-inhouse-file-name></small>
       <button type="submit">Send <span>→</span></button>
     </form>
     {% else %}
@@ -57,6 +59,8 @@
     const messages = document.querySelector('[data-inhouse-messages]');
     const form = document.querySelector('[data-inhouse-form]');
     const body = document.querySelector('[data-inhouse-body]');
+    const file = document.querySelector('[data-inhouse-file]');
+    const fileName = document.querySelector('[data-inhouse-file-name]');
     const feedUrl = shell.dataset.feedUrl;
     const token = shell.dataset.websocketToken;
     const conversationId = shell.dataset.conversationId;
@@ -85,15 +89,27 @@
       items.forEach((item) => {
         const article = document.createElement('article');
         article.className = `inhouse-message${item.mine ? ' mine' : ''}`;
-        const paragraph = document.createElement('p');
-        paragraph.textContent = item.body;
+        if (item.body) {
+          const paragraph = document.createElement('p');
+          paragraph.textContent = item.body;
+          article.appendChild(paragraph);
+        }
+        if (item.attachment_url) {
+          const attachment = document.createElement('a');
+          attachment.href = item.attachment_url;
+          attachment.target = '_blank';
+          attachment.rel = 'noreferrer';
+          attachment.textContent = `📎 ${item.attachment_name || 'Attached file'}`;
+          article.appendChild(attachment);
+        }
         const meta = document.createElement('small');
         meta.textContent = `${item.sender_code || currentCode} · ${item.created_at}`;
-        article.append(paragraph, meta);
+        article.appendChild(meta);
         messages.appendChild(article);
       });
       scrollMessages();
     };
+    if (file) file.addEventListener('change', () => { if (fileName) fileName.textContent = file.files[0] ? file.files[0].name : ''; });
     const refresh = async () => {
       const response = await fetch(feedUrl, {headers: {Accept: 'application/json'}, credentials: 'same-origin'});
       if (response.ok) renderMessages((await response.json()).messages || []);
@@ -107,6 +123,8 @@
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || 'Message could not be sent.');
         body.value = '';
+        if (file) file.value = '';
+        if (fileName) fileName.textContent = '';
         await refresh();
       } catch (error) {
         window.alert(error.message);
@@ -127,5 +145,6 @@
     }
   })();
 </script>
+<script src="{% static 'js/rtc-chat.js' %}?v=20261015"></script>
 {% endif %}
 {% endblock %}

@@ -41,7 +41,33 @@ class LiveRefreshConsumer(AsyncJsonWebsocketConsumer):
         if content.get("action") in {"sync", "presence"}:
             await self.send_json({"type": "chat.ready"})
             return
+        if content.get("action") == "rtc.signal":
+            signal = content.get("signal")
+            if not isinstance(signal, dict) or signal.get("kind") not in {
+                "invite",
+                "accepted",
+                "declined",
+                "offer",
+                "answer",
+                "ice",
+                "hangup",
+            }:
+                await self.send_json({"type": "chat.error", "error": "Invalid call signal."})
+                return
+            await self.channel_layer.group_send(
+                self.group_name,
+                {
+                    "type": "rtc.signal",
+                    "sender": self.channel_name,
+                    "signal": signal,
+                },
+            )
+            return
         await self.send_json({"type": "chat.error", "error": "Use the protected HTTP action endpoint for chat actions."})
+
+    async def rtc_signal(self, event):
+        if event.get("sender") != self.channel_name:
+            await self.send_json({"type": "rtc.signal", "signal": event["signal"]})
 
 
 class EmergencyChatConsumer(LiveRefreshConsumer):

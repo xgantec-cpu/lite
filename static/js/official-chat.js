@@ -9,9 +9,12 @@
   const expandButton = widget.querySelector("[data-chat-expand]");
   const form = widget.querySelector("[data-chat-form]");
   const bodyField = widget.querySelector("[data-chat-body]");
+  const fileField = widget.querySelector("[data-chat-file]");
+  const fileName = widget.querySelector("[data-chat-file-name]");
   const messages = widget.querySelector("[data-chat-messages]");
   const badge = widget.querySelector("[data-chat-unread]");
   const referralSelect = widget.querySelector("[data-chat-referral]");
+  const openCallButton = document.querySelector("[data-open-case-chat]");
   const urlTemplate = widget.dataset.chatUrlTemplate;
   const websocketUrlTemplate = widget.dataset.chatWsUrlTemplate;
   const csrfToken = widget.dataset.csrf;
@@ -64,11 +67,22 @@
     items.forEach((item) => {
       const message = document.createElement("article");
       message.className = "official-chat-message" + (item.mine ? " mine" : "");
-      const text = document.createElement("p");
-      text.textContent = item.body;
+      if (item.body) {
+        const text = document.createElement("p");
+        text.textContent = item.body;
+        message.appendChild(text);
+      }
+      if (item.attachment_url) {
+        const attachment = document.createElement("a");
+        attachment.href = item.attachment_url;
+        attachment.target = "_blank";
+        attachment.rel = "noreferrer";
+        attachment.textContent = "📎 " + (item.attachment_name || "Attached file");
+        message.appendChild(attachment);
+      }
       const meta = document.createElement("small");
       meta.textContent = item.sender + " · " + item.created_at;
-      message.append(text, meta);
+      message.appendChild(meta);
       messages.appendChild(message);
     });
     messages.scrollTop = messages.scrollHeight;
@@ -129,6 +143,16 @@
     launcher.setAttribute("aria-expanded", "false");
   });
   if (expandButton) expandButton.addEventListener("click", () => setExpanded(!isExpanded));
+  if (openCallButton) openCallButton.addEventListener("click", () => {
+    isOpen = true;
+    panel.hidden = false;
+    launcher.setAttribute("aria-expanded", "true");
+    refresh(true);
+    window.setTimeout(() => {
+      const rtcCallButton = widget.querySelector("[data-rtc-call]");
+      if (rtcCallButton && !rtcCallButton.hidden) rtcCallButton.click();
+    }, 0);
+  });
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && isExpanded) setExpanded(false);
   });
@@ -137,23 +161,29 @@
     refresh(isOpen);
     connectWebSocket();
   });
+  if (fileField) fileField.addEventListener("change", () => {
+    if (fileName) fileName.textContent = fileField.files[0] ? fileField.files[0].name : "";
+  });
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const body = bodyField.value.trim();
-    if (!body) return;
-    const payload = new URLSearchParams({
-      body,
-      idempotency_key: window.crypto && window.crypto.randomUUID
+    const file = fileField && fileField.files[0];
+    if (!body && !file) return;
+    const payload = new FormData();
+    payload.append("body", body);
+    payload.append("idempotency_key", window.crypto && window.crypto.randomUUID
         ? window.crypto.randomUUID()
-        : String(Date.now()) + "-" + Math.random().toString(16).slice(2),
-    });
+        : String(Date.now()) + "-" + Math.random().toString(16).slice(2));
+    if (file) payload.append("file", file, file.name);
     const response = await fetch(currentUrl(""), {
       method: "POST",
-      headers: {"X-CSRFToken": csrfToken, "X-Requested-With": "XMLHttpRequest", "Content-Type": "application/x-www-form-urlencoded"},
+      headers: {"X-CSRFToken": csrfToken, "X-Requested-With": "XMLHttpRequest"},
       body: payload,
     });
     if (response.ok) {
       bodyField.value = "";
+      if (fileField) fileField.value = "";
+      if (fileName) fileName.textContent = "";
       await refresh(true);
     }
   });

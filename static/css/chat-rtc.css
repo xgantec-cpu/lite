@@ -1,0 +1,132 @@
+/* Shared controls for browser-to-browser voice calls. */
+.rtc-call-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  padding: 8px 10px;
+  border-top: 1px solid #dbe6ed;
+  border-bottom: 1px solid #dbe6ed;
+  color: #526b7b;
+  background: #f5f9fb;
+  font-size: 10px;
+}
+
+.rtc-call-controls [data-rtc-status] {
+  flex: 1 1 180px;
+  font-weight: 800;
+}
+
+.rtc-call-controls [data-rtc-mic] {
+  color: #8a5b18;
+  font-weight: 800;
+}
+
+.rtc-call-controls [data-rtc-mic].is-active {
+  color: #178457;
+}
+
+.rtc-call-controls [data-rtc-timer] {
+  min-width: 42px;
+  color: #1d3d54;
+  font-variant-numeric: tabular-nums;
+  font-weight: 900;
+}
+
+.rtc-call-button {
+  min-height: 28px;
+  padding: 5px 9px;
+  border: 1px solid #9acfe3;
+  border-radius: 7px;
+  color: #fff;
+  background: #148fc1;
+  font: inherit;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.rtc-call-button:hover,
+.rtc-call-button:focus-visible {
+  background: #0a719c;
+}
+
+.rtc-call-answer { background: #168fca; }
+.rtc-call-decline { border-color: #e1a09a; background: #c54a42; }
+.rtc-call-decline:hover,
+.rtc-call-decline:focus-visible { background: #a8352e; }
+.rtc-call-button.active { background: #174b6c; }
+.rtc-call-controls audio { display: none; }
+
+.official-chat-compose {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 7px;
+  align-items: end;
+}
+
+.official-chat-compose [data-chat-file-name],
+.inhouse-file-name {
+  max-width: 130px;
+  overflow: hidden;
+  color: #557082;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.official-chat-file,
+.inhouse-chat-file {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 8px;
+  border: 1px solid #b9d8e4;
+  border-radius: 7px;
+  color: #176384;
+  background: #edf8fc;
+  font-size: 10px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.official-chat-file input,
+.inhouse-chat-file input { display: none; }
+
+.official-chat-message > a,
+.inhouse-message > a,
+.institution-chat-message > a {
+  display: inline-block;
+  margin-top: 5px;
+  color: #126e99;
+  font-size: 11px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.official-chat-message > a:hover,
+.inhouse-message > a:hover,
+.institution-chat-message > a:hover { text-decoration: underline; }
+
+html[data-theme="dark"] .rtc-call-controls {
+  border-color: #31495a;
+  color: #d3e3ed;
+  background: #152533;
+}
+
+html[data-theme="dark"] .rtc-call-controls [data-rtc-mic] { color: #e7c176; }
+html[data-theme="dark"] .rtc-call-controls [data-rtc-mic].is-active { color: #74d9a2; }
+html[data-theme="dark"] .rtc-call-controls [data-rtc-timer] { color: #e6f4fb; }
+html[data-theme="dark"] .official-chat-file,
+html[data-theme="dark"] .inhouse-chat-file {
+  border-color: #3c6b80;
+  color: #bfeafa;
+  background: #17384a;
+}
+html[data-theme="dark"] .official-chat-compose [data-chat-file-name],
+html[data-theme="dark"] .inhouse-file-name { color: #abc6d4; }
+
+@media (max-width: 640px) {
+  .official-chat-compose { grid-template-columns: 1fr auto; }
+  .official-chat-compose [data-chat-file-name] { grid-column: 1 / -1; }
+  .rtc-call-controls [data-rtc-status] { flex-basis: 100%; }
+}

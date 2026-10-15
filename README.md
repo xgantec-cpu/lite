@@ -1,5 +1,7 @@
 # Emergency Assistance and Rapid Response System
 
+> **Full presentation and user documentation:** [docs/SYSTEM_DOCUMENTATION.md](docs/SYSTEM_DOCUMENTATION.md)
+
 This is the first Django MVP for a location-aware emergency request platform.
 
 ## Included

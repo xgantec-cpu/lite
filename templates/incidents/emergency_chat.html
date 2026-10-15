@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Secure emergency chat · {{ incident.request.request_id }}</title>
   <link rel="stylesheet" href="{% static 'css/site.css' %}?v=20261001">
-  <link rel="stylesheet" href="{% static 'css/emergency-chat.css' %}?v=20261004">
+  <link rel="stylesheet" href="{% static 'css/emergency-chat.css' %}?v=20261033">
 </head>
 <body class="emergency-chat-page-body">
   <main class="emergency-chat-page">
@@ -27,33 +27,29 @@
           <span class="emergency-chat-live"><i></i>Protected channel</span>
         </div>
 
-        {% if chat_role == "public" %}
-        <section class="emergency-chat-invite" data-chat-invite>
-          <span class="emergency-chat-invite-icon">◌</span>
-          <div><strong>Can you chat with the response team?</strong><p>Accept to send text messages, audio notes, and voice-call requests to the responder handling this report.</p></div>
-          <form data-chat-accept-form>{% csrf_token %}<button class="button button-primary" type="submit">Accept secure chat <span>→</span></button></form>
-        </section>
-        {% endif %}
-
-        <section class="emergency-chat-panel emergency-chat-full-panel" data-chat-panel{% if chat_role == "public" %} hidden{% endif %} aria-label="Secure emergency chat">
+        <section class="emergency-chat-panel emergency-chat-full-panel" data-chat-panel aria-label="Secure emergency chat">
           <header class="emergency-chat-header">
             <div><strong>{% if chat_role == "admin" %}Sender conversation{% else %}District response team{% endif %}</strong><small>Messages are retained for 48 hours</small></div>
             <span class="emergency-chat-live"><i></i>Connected</span>
           </header>
-          <div class="emergency-chat-status" data-chat-status>Waiting for the sender to accept chat.</div>
+          <div class="emergency-chat-status" data-chat-status>Opening the secure response channel…</div>
           <div class="emergency-chat-messages" data-chat-messages></div>
           <div class="emergency-chat-actions emergency-chat-channels" aria-label="Chat channels">
             <button type="button" data-chat-channel="text"><span>✎</span><small>Message</small></button>
             <button type="button" data-chat-record data-chat-channel="audio"><span>◉</span><small>Audio note</small></button>
+            <button type="button" data-chat-attach data-chat-channel="file"><span>↗</span><small>File</small></button>
             <button type="button" data-chat-call data-chat-channel="call"><span>⌕</span><small>Voice call</small></button>
+            <input type="file" data-chat-attachment hidden accept=".pdf,.json,.zip,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.jpg,.jpeg,.png,.gif,.webp,.webm,.ogg,.mp3,.m4a,.wav,.mp4,.mov">
+            <small class="emergency-chat-file-name" data-chat-file-name></small>
           </div>
           <section class="emergency-call-controls" data-call-controls hidden aria-label="Voice call controls">
-            <div class="emergency-call-heading"><div><strong data-call-connection>Voice call connected</strong><span class="emergency-call-timer" data-call-timer>00:00</span><small data-call-note>Use the controls below to manage the call.</small></div><button class="call-end-button" type="button" data-call-end>End call</button></div>
+            <div class="emergency-call-heading"><div><strong data-call-connection>Voice call connected</strong><span class="emergency-call-timer" data-call-timer>00:00</span><small data-call-note>Use the controls below to manage the call.</small><small class="emergency-call-mic" data-rtc-mic>Microphone not connected</small></div><button class="call-end-button" type="button" data-call-end>End call</button></div>
             <div class="emergency-call-buttons">
               <button type="button" data-call-hold><span>Ⅱ</span><small>Hold</small></button>
               <button type="button" data-call-mute><span>◉</span><small>Mute</small></button>
               <button type="button" data-call-speaker><span>⌁</span><small>Speaker</small></button>
             </div>
+            <audio data-rtc-audio autoplay playsinline></audio>
           </section>
           <form class="emergency-chat-form" data-chat-form>
             {% csrf_token %}
@@ -64,6 +60,6 @@
       </section>
     {% endif %}
   </main>
-  {% if chat_room %}<script src="{% static 'js/emergency-chat.js' %}?v=20261002"></script>{% endif %}
+  {% if chat_room %}<script src="{% static 'js/emergency-chat.js' %}?v=20261033"></script>{% endif %}
 </body>
 </html>

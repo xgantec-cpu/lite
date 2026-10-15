@@ -20,7 +20,7 @@
     <p class="eyebrow">Private location reference</p>
     <h2 id="location-consent-title">Allow location for faster help?</h2>
     <p id="location-consent-description">We will request your current device location once and attach it to this emergency request. If this is a critical case, allowing location also permits periodic updates while this page remains open.</p>
-    <p class="location-consent-note">You can stop sharing at any time. We do not continue collecting location after you close the page, and this browser creates only a private UUID reference for the case.</p>
+    <p class="location-consent-note">If current access is unavailable, we can use the last location this browser previously shared with this app for up to 24 hours. We cannot access your wider browser location history.</p>
     <div class="location-consent-actions">
       <button class="location-consent-primary" id="location-consent-allow" type="button">Allow location &amp; tracking</button>
       <button class="location-consent-secondary" id="location-consent-skip" type="button">Continue without it</button>
@@ -64,6 +64,8 @@
   const consentStatus = document.getElementById('location-consent-status');
   const clientUuidField = document.getElementById('id_client_uuid');
   const storageKey = 'rapid_response_client_uuid';
+  const locationStorageKey = 'rapid_response_last_location';
+  const locationMaxAge = 24 * 60 * 60 * 1000;
 
   function readStoredUuid() {
     try { return window.localStorage.getItem(storageKey) || ''; } catch (error) { return ''; }
@@ -100,6 +102,36 @@
     return value;
   }
 
+  function setLocation(position, source) {
+    document.getElementById('id_latitude').value = position.latitude;
+    document.getElementById('id_longitude').value = position.longitude;
+    document.getElementById('id_location_accuracy').value = position.accuracy || '';
+    document.getElementById('id_location_source').value = source;
+  }
+
+  function saveLocation(position) {
+    const location = {
+      latitude: position.coords.latitude,
+      longitude: position.coords.longitude,
+      accuracy: position.coords.accuracy || '',
+      capturedAt: Date.now(),
+    };
+    try { window.localStorage.setItem(locationStorageKey, JSON.stringify(location)); } catch (error) {}
+    return location;
+  }
+
+  function useLastLocation() {
+    let location;
+    try { location = JSON.parse(window.localStorage.getItem(locationStorageKey) || 'null'); } catch (error) { location = null; }
+    if (!location || !location.capturedAt || Date.now() - location.capturedAt > locationMaxAge) return false;
+    if (typeof location.latitude !== 'number' || typeof location.longitude !== 'number') return false;
+    setLocation(location, 'cached');
+    const capturedAt = new Date(location.capturedAt).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+    status.textContent = 'Using last known location from ' + capturedAt;
+    consentStatus.textContent = 'A previous browser location will be attached without live tracking.';
+    return true;
+  }
+
   function closeConsent() {
     consent.hidden = true;
     document.body.classList.remove('location-consent-open');
@@ -107,26 +139,29 @@
 
   function requestLocation() {
     if (!navigator.geolocation) {
-      status.textContent = 'Device location is unavailable; use the district and landmark fields.';
-      consentStatus.textContent = 'This browser does not provide location services.';
+      if (!useLastLocation()) {
+        status.textContent = 'Device location is unavailable; use the district and landmark fields.';
+        consentStatus.textContent = 'This browser does not provide location services.';
+      } else closeConsent();
       return;
     }
     status.textContent = 'Requesting your current location…';
     consentStatus.textContent = 'Waiting for your browser permission…';
     allowButton.disabled = true;
     navigator.geolocation.getCurrentPosition((position) => {
-      document.getElementById('id_latitude').value = position.coords.latitude;
-      document.getElementById('id_longitude').value = position.coords.longitude;
-      document.getElementById('id_location_accuracy').value = position.coords.accuracy || '';
-      document.getElementById('id_location_source').value = 'gps';
+      const location = saveLocation(position);
+      setLocation(location, 'gps');
       setClientUuid();
       status.textContent = 'Location activated and private reference ready';
       consentStatus.textContent = 'Location is attached to this request only.';
       closeConsent();
     }, () => {
-      status.textContent = 'Location was not shared; use the district and landmark fields.';
-      consentStatus.textContent = 'No location was saved. You can continue without it.';
-      allowButton.disabled = false;
+      if (useLastLocation()) closeConsent();
+      else {
+        status.textContent = 'Location was not shared; use the district and landmark fields.';
+        consentStatus.textContent = 'No current or recent location was available. You can continue without it.';
+        allowButton.disabled = false;
+      }
     }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
   }
 
@@ -137,7 +172,7 @@
   document.body.classList.add('location-consent-open');
   window.setTimeout(() => allowButton.focus(), 0);
   allowButton.addEventListener('click', requestLocation);
-  skipButton.addEventListener('click', closeConsent);
+  skipButton.addEventListener('click', () => { useLastLocation(); closeConsent(); });
   button.addEventListener('click', requestLocation);
 })();
 </script>

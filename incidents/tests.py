@@ -245,6 +245,24 @@ class EmergencyRequestFlowTests(TestCase):
         self.assertTrue(emergency_request.tracking_enabled)
         self.assertTrue(emergency_request.request_id.startswith("EMG-MSKA-"))
 
+    def test_quick_video_ajax_submit_returns_success_url(self):
+        video = SimpleUploadedFile("help.webm", b"video-bytes", content_type="video/webm")
+        response = self.client.post(
+            reverse("quick_help"),
+            {
+                "quick_mode": "1",
+                "latitude": "-0.340012",
+                "longitude": "31.733312",
+                "location_source": "gps",
+                "client_uuid": "88888888-8888-4888-8888-888888888888",
+                "recording_duration": "4",
+                "video": video,
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["redirect_url"], reverse("submit_success"))
+
     def test_quick_video_reuses_the_client_token_for_repeat_case_detection(self):
         client_uuid = "77777777-7777-4777-8777-777777777777"
         base_payload = {
@@ -406,6 +424,22 @@ class EmergencyRequestFlowTests(TestCase):
         self.assertContains(response, "Back to previous step")
         self.assertContains(response, "data-chat-fullscreen=\"true\"")
         self.assertContains(response, "data-call-end")
+
+    def test_opening_public_chat_activates_without_invitation(self):
+        self.client.post(reverse("home"), {
+            "phone_number": "+256700000000",
+            "area_name": "Masaka",
+            "emergency_type": "danger",
+            "priority": "high",
+            "location_source": "user",
+        })
+        incident = EmergencyRequest.objects.get().incident
+        response = self.client.get(reverse("emergency_chat_page", args=[incident.pk]))
+        room = EmergencyChatRoom.objects.get(incident=incident)
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNotNone(room.accepted_at)
+        self.assertContains(response, "data-chat-panel")
+        self.assertNotContains(response, "Accept secure chat")
 
     def test_success_page_repairs_missing_chat_room(self):
         self.client.post(reverse("home"), {

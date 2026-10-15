@@ -37,7 +37,7 @@
   <div class="incident-list">
     {% for favorite in favorites %}
     {% with incident=favorite.incident %}
-    <a class="incident-row" href="{% url 'dashboard_incident' incident.pk %}">
+    <a class="incident-row" data-report-date="{{ incident.request.created_at|date:'Y-m-d' }}" href="{% url 'dashboard_incident' incident.pk %}">
       <div class="priority-bar priority-{{ incident.request.priority }}"></div>
       <div class="incident-main">
         <div class="incident-top">

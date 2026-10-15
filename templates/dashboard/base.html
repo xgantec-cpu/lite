@@ -18,7 +18,9 @@
   <link rel="stylesheet" href="{% static 'css/dashboard/dashboard.css' %}?v=20261028">
   <link rel="stylesheet" href="{% static 'css/dashboard/map.css' %}?v=20261004">
   <link rel="stylesheet" href="{% static 'css/dashboard/referrals.css' %}?v=20261001">
-  <link rel="stylesheet" href="{% static 'css/dashboard/uichat-theme.css' %}?v=20261074">
+  <link rel="stylesheet" href="{% static 'css/dashboard/uichat-theme.css' %}?v=20261075">
+  <link rel="stylesheet" href="{% static 'css/chat-rtc.css' %}?v=20261015">
+  <link rel="stylesheet" href="{% static 'css/dashboard/report-builder.css' %}?v=20261026">
   {% block extra_css %}{% endblock %}
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
   <link rel="stylesheet" href="{% static 'css/dashboard/dark-mode.css' %}?v=20261029">
@@ -31,17 +33,17 @@
       <button class="sidebar-toggle" id="sidebar-toggle" type="button" aria-expanded="true" aria-controls="dashboard-sidebar"><span class="sidebar-toggle-icon" aria-hidden="true">‹</span><span class="sidebar-toggle-label">Collapse menu</span></button>
       <div class="workspace-label">Operations centre</div>
       <nav>
-        <a class="nav-link nav-severity-{{ dashboard_nav_severity|default:'normal' }} {% if request.resolver_match.url_name == 'dashboard_incoming' %}active{% endif %}" data-mini-label="Incoming" href="{% url 'dashboard_incoming' %}"><span>▦</span> Incoming incidents{% if dashboard_nav_count %}<b class="nav-count">{{ dashboard_nav_count }}</b>{% endif %}</a>
-        <a class="nav-link {% if request.resolver_match.url_name == 'dashboard_home' or request.resolver_match.url_name == 'dashboard_area_activity' %}active{% endif %}" data-mini-label="Districts" href="{% url 'dashboard_home' %}"><span>▣</span> Cases by district</a>
-        <a class="nav-link {% if request.resolver_match.url_name == 'dashboard_global_map' %}active{% endif %}" data-mini-label="Map" href="{% url 'dashboard_global_map' %}"><span>◎</span> Global case map</a>
-        <a class="nav-link {% if request.resolver_match.url_name == 'inhouse_chat' %}active{% endif %}" data-mini-label="Chat" href="{% url 'inhouse_chat' %}"><span>⌁</span> In-house chat</a>
-        <a class="nav-link {% if request.resolver_match.url_name == 'dashboard_cases' %}active{% endif %}" data-mini-label="Archive" href="{% url 'dashboard_cases' %}"><span>◫</span> Cases archive</a>
-        <a class="nav-link {% if request.resolver_match.url_name == 'dashboard_favorites' %}active{% endif %}" data-mini-label="Favorites" href="{% url 'dashboard_favorites' %}"><span>★</span> Favorites</a>
-        <a class="nav-link {% if request.resolver_match.url_name == 'dashboard_referral_inbox' %}active{% endif %}" data-mini-label="Referrals" href="{% url 'dashboard_referral_inbox' %}"><span>↗</span> Referral inbox</a>
-        <a class="nav-link {% if request.resolver_match.url_name == 'dashboard_referral_token' %}active{% endif %}" data-mini-label="Tokens" href="{% url 'dashboard_referral_token' %}"><span>⌁</span> Open referral token</a>
+        <a class="nav-link nav-severity-{{ dashboard_nav_severity|default:'normal' }} {% if request.resolver_match.url_name == 'dashboard_incoming' %}active{% endif %}" data-mini-label="Incoming" href="{% url 'dashboard_incoming' %}"><span class="nav-icon" aria-hidden="true">▦</span><span class="nav-label">Incoming incidents</span>{% if dashboard_nav_count %}<b class="nav-count">{{ dashboard_nav_count }}</b>{% endif %}</a>
+        <a class="nav-link {% if request.resolver_match.url_name == 'dashboard_home' or request.resolver_match.url_name == 'dashboard_area_activity' %}active{% endif %}" data-mini-label="Districts" href="{% url 'dashboard_home' %}"><span class="nav-icon" aria-hidden="true">▣</span><span class="nav-label">Cases by district</span></a>
+        <a class="nav-link {% if request.resolver_match.url_name == 'dashboard_global_map' %}active{% endif %}" data-mini-label="Map" href="{% url 'dashboard_global_map' %}"><span class="nav-icon" aria-hidden="true">◎</span><span class="nav-label">Global case map</span></a>
+        <a class="nav-link {% if request.resolver_match.url_name == 'inhouse_chat' %}active{% endif %}" data-mini-label="Chat" href="{% url 'inhouse_chat' %}"><span class="nav-icon" aria-hidden="true">⌁</span><span class="nav-label">In-house chat</span></a>
+        <a class="nav-link {% if request.resolver_match.url_name == 'dashboard_cases' %}active{% endif %}" data-mini-label="Archive" href="{% url 'dashboard_cases' %}"><span class="nav-icon" aria-hidden="true">◫</span><span class="nav-label">Cases archive</span></a>
+        <a class="nav-link {% if request.resolver_match.url_name == 'dashboard_favorites' %}active{% endif %}" data-mini-label="Favorites" href="{% url 'dashboard_favorites' %}"><span class="nav-icon" aria-hidden="true">★</span><span class="nav-label">Favorites</span></a>
+        <a class="nav-link {% if request.resolver_match.url_name == 'dashboard_referral_inbox' %}active{% endif %}" data-mini-label="Referrals" href="{% url 'dashboard_referral_inbox' %}"><span class="nav-icon" aria-hidden="true">↗</span><span class="nav-label">Referral inbox</span></a>
+        <a class="nav-link {% if request.resolver_match.url_name == 'dashboard_referral_token' %}active{% endif %}" data-mini-label="Tokens" href="{% url 'dashboard_referral_token' %}"><span class="nav-icon" aria-hidden="true">⌁</span><span class="nav-label">Open referral token</span></a>
         {% if request.user.is_superuser %}
-        <a class="nav-link {% if request.resolver_match.url_name == 'operations_center' %}active{% endif %}" data-mini-label="Ops" href="{% url 'operations_center' %}"><span>⌕</span> Operations Center</a>
-        <a class="nav-link" data-mini-label="Admin" href="{% url 'admin_section_gate' %}"><span>⚙</span> Main administration</a>
+        <a class="nav-link {% if request.resolver_match.url_name == 'operations_center' %}active{% endif %}" data-mini-label="Ops" href="{% url 'operations_center' %}"><span class="nav-icon" aria-hidden="true">⌕</span><span class="nav-label">Operations Center</span></a>
+        <a class="nav-link" data-mini-label="Admin" href="{% url 'admin_section_gate' %}"><span class="nav-icon" aria-hidden="true">⚙</span><span class="nav-label">Main administration</span></a>
         {% endif %}
       </nav>
       <div class="sidebar-bottom">
@@ -50,12 +52,44 @@
       <div class="sidebar-resize-handle" id="sidebar-resize-handle" role="separator" aria-label="Resize sidebar" aria-orientation="vertical" tabindex="0"></div>
     </aside>
     <section class="main-area">
-      <header class="topbar"><button class="theme-toggle" data-theme-toggle type="button" aria-label="Toggle dark mode" aria-pressed="false"><span class="theme-toggle-icon" aria-hidden="true">☾</span><span class="theme-toggle-label">Dark mode</span></button><div class="mobile-brand"><img class="mobile-brand-logo" src="{% static 'Rapid Response Emergency Logo.png' %}" alt=""><span>Rapid<span>Response</span></span></div><a class="topbar-user" href="{% url 'dashboard_profile' %}"><div class="avatar">{{ request.user.username|first|upper }}</div><div><strong>{{ request.user.get_full_name|default:request.user.username }}</strong><small>{% if request.user.is_superuser %}Super administrator{% else %}Responder · View profile{% endif %}</small></div></a><a class="logout" href="{% url 'dashboard_logout' %}">Sign out</a></header>
+      <header class="topbar"><div class="topbar-actions"><button class="theme-toggle" data-theme-toggle type="button" aria-label="Toggle dark mode" aria-pressed="false"><span class="theme-toggle-icon" aria-hidden="true">☾</span><span class="theme-toggle-label">Dark mode</span></button><button class="report-open-button" data-report-open type="button" aria-haspopup="dialog"><span aria-hidden="true">▤</span><span>Print report</span></button></div><div class="mobile-brand"><img class="mobile-brand-logo" src="{% static 'Rapid Response Emergency Logo.png' %}" alt=""><span>Rapid<span>Response</span></span></div><a class="topbar-user" href="{% url 'dashboard_profile' %}"><div class="avatar">{{ request.user.username|first|upper }}</div><div><strong>{{ request.user.get_full_name|default:request.user.username }}</strong><small>{% if request.user.is_superuser %}Super administrator{% else %}Responder · View profile{% endif %}</small></div></a><a class="logout" href="{% url 'dashboard_logout' %}">Sign out</a></header>
       <main class="content content-shell">{% if messages %}{% for message in messages %}<div class="flash">{{ message }}</div>{% endfor %}{% endif %}{% block content %}{% endblock %}</main>
     </section>
   </div>
+  <dialog class="report-dialog" data-report-dialog data-report-logo="{% static 'Rapid Response Emergency Logo.png' %}" aria-labelledby="report-dialog-title">
+    <div class="report-dialog-card">
+      <header class="report-dialog-header">
+        <div><span class="eyebrow">Operations reporting</span><h2 id="report-dialog-title">Build a print report</h2><p>Choose exactly what should appear on the printed report.</p></div>
+        <button class="report-dialog-close" data-report-close type="button" aria-label="Close report builder">×</button>
+      </header>
+      <div class="report-dialog-body">
+        <label class="report-field"><span>Report title</span><input data-report-title type="text" maxlength="120" autocomplete="off"></label>
+        <fieldset class="report-scope-fieldset">
+          <legend>Report scope</legend>
+          <label><input type="radio" name="report-scope" value="full" checked> Full page view</label>
+          <label><input type="radio" name="report-scope" value="selected"> Toggle pages and sections</label>
+        </fieldset>
+        <div class="report-sections" data-report-sections></div>
+        <div class="report-selection-tools" data-report-selection-tools hidden>
+          <span>Toggle what should appear in the report.</span>
+          <div>
+            <button type="button" data-report-select-all>Select all</button>
+            <button type="button" data-report-clear-all>Clear all</button>
+          </div>
+        </div>
+        <div class="report-selection-summary" data-report-summary></div>
+        <fieldset class="report-date-fieldset">
+          <legend>Optional day filter</legend>
+          <label class="report-date-label"><input data-report-date type="date"><span>Print dated case entries from this day only</span></label>
+          <small>Available on pages with dated case rows. Leave blank to include all available dates.</small>
+        </fieldset>
+      </div>
+      <footer class="report-dialog-actions"><div class="report-export-note"><strong>Ready to export?</strong><span>The browser print window lets you print or choose “Save to PDF”.</span></div><button class="report-cancel-button" data-report-close type="button">Cancel</button><button class="report-print-button" data-report-print type="button"><span class="report-action-icon" aria-hidden="true">▤</span><span><strong>Print / Save as PDF</strong><small>Open print preview</small></span><b aria-hidden="true">→</b></button></footer>
+    </div>
+  </dialog>
 </body>
 <script src="{% static 'js/session-activity.js' %}?v=20261002"></script>
 <script src="{% static 'js/sidebar-toggle.js' %}?v=20261026"></script>
 <script src="{% static 'js/theme-toggle.js' %}?v=20261002"></script>
+  <script src="{% static 'js/report-builder.js' %}?v=20261021"></script>
 </html>

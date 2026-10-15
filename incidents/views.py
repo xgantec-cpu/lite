@@ -41,6 +41,7 @@ CRITICAL_TRACKING_WINDOW = timedelta(minutes=30)
 TRACKING_OPEN_STATUSES = {"new", "acknowledged", "responding"}
 MAX_VIDEO_UPLOAD_BYTES = 25 * 1024 * 1024
 MAX_AUDIO_UPLOAD_BYTES = 10 * 1024 * 1024
+MAX_CHAT_FILE_BYTES = 20 * 1024 * 1024
 ALLOWED_VIDEO_TYPES = {"video/webm", "video/mp4", "video/quicktime", "video/ogg"}
 ALLOWED_VIDEO_EXTENSIONS = {".webm", ".mp4", ".mov", ".m4v", ".ogv"}
 ALLOWED_AUDIO_TYPES = {"audio/webm", "audio/ogg", "audio/mpeg", "audio/mp4", "audio/wav", "audio/x-wav"}
@@ -50,6 +51,21 @@ MFA_SURFACE_LABELS = {
     "admin": "main administration",
 }
 ALLOWED_AUDIO_EXTENSIONS = {".webm", ".ogg", ".mp3", ".m4a", ".wav"}
+ALLOWED_CHAT_FILE_TYPES = {
+    "application/pdf", "application/json", "application/zip", "application/x-zip-compressed",
+    "application/msword", "application/vnd.ms-excel", "application/vnd.ms-powerpoint",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "text/plain", "text/csv", "image/jpeg", "image/png", "image/gif", "image/webp",
+    "audio/webm", "audio/ogg", "audio/mpeg", "audio/mp4", "audio/wav",
+    "video/webm", "video/mp4", "video/quicktime", "video/ogg",
+}
+ALLOWED_CHAT_FILE_EXTENSIONS = {
+    ".pdf", ".json", ".zip", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
+    ".txt", ".csv", ".jpg", ".jpeg", ".png", ".gif", ".webp", ".webm", ".ogg",
+    ".mp3", ".m4a", ".wav", ".mp4", ".mov",
+}
 logger = logging.getLogger(__name__)
 
 
@@ -59,6 +75,26 @@ def _is_allowed_upload(upload, content_types, extensions):
     content_type = (upload.content_type or "").split(";", 1)[0].strip().lower()
     extension = Path(upload.name or "").suffix.lower()
     return content_type in content_types and extension in extensions
+
+
+def _is_allowed_chat_file(upload):
+    if upload is None or upload.size > MAX_CHAT_FILE_BYTES:
+        return False
+    content_type = (upload.content_type or "").split(";", 1)[0].strip().lower()
+    extension = Path(upload.name or "").suffix.lower()
+    return extension in ALLOWED_CHAT_FILE_EXTENSIONS and (
+        content_type in ALLOWED_CHAT_FILE_TYPES or content_type in {"", "application/octet-stream"}
+    )
+
+
+def _chat_file_fields(upload):
+    content_type = (upload.content_type or "").split(";", 1)[0].strip().lower()
+    return {
+        "attachment": upload,
+        "attachment_name": Path(upload.name or "attachment").name[:255],
+        "attachment_content_type": content_type[:120],
+        "attachment_size": upload.size,
+    }
 
 
 def _write_idempotency_key(request, scope, *values):
@@ -359,6 +395,10 @@ def submit_success(request: HttpRequest) -> HttpResponse:
         _ensure_emergency_chat_room(incident)
     chat_room = _active_emergency_chat_room(incident) if incident else None
     case_request = incident.request if incident else None
+    chat_unread_count = (
+        chat_room.messages.filter(sender_type="admin", read_at__isnull=True).count()
+        if chat_room else 0
+    )
     tracking_available = bool(
         case_request
         and case_request.priority == "critical"
@@ -372,6 +412,7 @@ def submit_success(request: HttpRequest) -> HttpResponse:
         "request_id": request_id,
         "incident": incident,
         "chat_room": chat_room,
+        "chat_unread_count": chat_unread_count,
         "public_chat_token": make_public_chat_token(incident) if chat_room else "",
         "tracking_available": tracking_available,
         "tracking_endpoint": reverse("emergency_location_tracking", args=[incident.pk]) if tracking_available else "",
@@ -531,6 +572,22 @@ def _active_emergency_chat_room(incident):
     return room
 
 
+def _activate_emergency_chat_room(room):
+    if room is None or room.accepted_at is not None:
+        return room
+    activated_at = timezone.now()
+    updated = EmergencyChatRoom.objects.filter(
+        pk=room.pk,
+        accepted_at__isnull=True,
+    ).update(accepted_at=activated_at, updated_at=activated_at)
+    if updated:
+        room.accepted_at = activated_at
+        room.updated_at = activated_at
+    else:
+        room.refresh_from_db(fields=["accepted_at", "updated_at"])
+    return room
+
+
 def _can_access_emergency_chat(request, incident):
     public_token = request.GET.get("access") or request.POST.get("access")
     if (
@@ -594,6 +651,14 @@ def _emergency_chat_json(room, request, sender_type):
                     if item.audio and request.GET.get("access")
                     else reverse("emergency_chat_audio", args=[item.pk]) if item.audio else ""
                 ),
+                "attachment_url": (
+                    f"{reverse('emergency_chat_file', args=[item.pk])}"
+                    f"?access={quote_plus(request.GET.get('access', ''))}"
+                    if item.attachment and request.GET.get("access")
+                    else reverse("emergency_chat_file", args=[item.pk]) if item.attachment else ""
+                ),
+                "attachment_name": item.attachment_name,
+                "attachment_size": item.attachment_size,
                 "audio_duration": item.audio_duration_seconds,
                 "mine": item.sender_type == sender_type,
                 "sender": "You" if item.sender_type == sender_type else ("Response team" if item.sender_type == "admin" else "Request sender"),
@@ -632,6 +697,8 @@ def emergency_chat_page(request: HttpRequest, incident_id: int) -> HttpResponse:
     room = _active_emergency_chat_room(incident)
     if room is None:
         room = _ensure_emergency_chat_room(incident)
+    if sender_type == "public":
+        _activate_emergency_chat_room(room)
     return render(request, "incidents/emergency_chat.html", {
         "incident": incident,
         "chat_room": room,
@@ -668,10 +735,15 @@ def emergency_chat(request: HttpRequest, incident_id: int) -> HttpResponse:
                 return JsonResponse({"error": "Accept the chat invitation before sending a message."}, status=409)
             body = request.POST.get("body", "").strip()
             audio = request.FILES.get("audio")
-            if not body and not audio:
-                return JsonResponse({"error": "Write a message or record an audio note."}, status=400)
+            attachment = request.FILES.get("file")
+            if audio and attachment:
+                return JsonResponse({"error": "Send an audio note or a file, not both at once."}, status=400)
+            if not body and not audio and not attachment:
+                return JsonResponse({"error": "Write a message, record an audio note, or attach a file."}, status=400)
             if audio and (not _is_allowed_upload(audio, ALLOWED_AUDIO_TYPES, ALLOWED_AUDIO_EXTENSIONS) or audio.size > MAX_AUDIO_UPLOAD_BYTES):
                 return JsonResponse({"error": "Audio notes must be valid audio files smaller than 10 MB."}, status=400)
+            if attachment and not _is_allowed_chat_file(attachment):
+                return JsonResponse({"error": "This file type is not allowed or the file is larger than 20 MB."}, status=400)
             try:
                 duration = int(request.POST.get("audio_duration", "0")) or None
             except (TypeError, ValueError):
@@ -684,15 +756,17 @@ def emergency_chat(request: HttpRequest, incident_id: int) -> HttpResponse:
             else:
                 existing_message = None
             if existing_message is None:
+                attachment_fields = _chat_file_fields(attachment) if attachment else {}
                 EmergencyChatMessage.objects.create(
                     room=room,
                     sender=request.user if sender_type == "admin" else None,
                     sender_type=sender_type,
-                    channel="audio" if audio else "text",
+                    channel="file" if attachment else "audio" if audio else "text",
                     idempotency_key=idempotency_key,
                     body=body[:4000],
                     audio=audio,
                     audio_duration_seconds=min(duration, 120) if duration else None,
+                    **attachment_fields,
                 )
         elif action == "call":
             if room.accepted_at is None:
@@ -757,6 +831,12 @@ def emergency_chat(request: HttpRequest, incident_id: int) -> HttpResponse:
     return JsonResponse(_emergency_chat_json(room, request, sender_type))
 
 
+def _quick_help_success_response(request):
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return JsonResponse({"success": True, "redirect_url": reverse("submit_success")})
+    return redirect("submit_success")
+
+
 @transaction.atomic
 def quick_help(request: HttpRequest) -> HttpResponse:
     if request.method == "POST":
@@ -778,12 +858,15 @@ def quick_help(request: HttpRequest) -> HttpResponse:
         latitude = _quick_coordinate(request.POST.get("latitude"), -90, 90, 6)
         longitude = _quick_coordinate(request.POST.get("longitude"), -180, 180, 6)
         accuracy = _quick_coordinate(request.POST.get("location_accuracy"), 0, 100000, 2)
+        location_source = request.POST.get("location_source", "user").strip().lower()
+        if location_source not in {"gps", "cached", "user", "network"} or latitude is None or longitude is None:
+            location_source = "user"
         client_uuid = _parse_client_uuid(request.POST.get("client_uuid"))
         idempotency_key = request.POST.get("idempotency_key", "").strip() or uuid.uuid4().hex
         existing_request = EmergencyRequest.objects.filter(idempotency_key=idempotency_key).first()
         if existing_request:
             request.session["request_id"] = existing_request.request_id
-            return redirect("submit_success")
+            return _quick_help_success_response(request)
         device = detect_device(request.META.get("HTTP_USER_AGENT", ""))
         try:
             with transaction.atomic():
@@ -794,13 +877,13 @@ def quick_help(request: HttpRequest) -> HttpResponse:
                     latitude=latitude,
                     longitude=longitude,
                     location_accuracy=accuracy,
-                    location_source="gps" if latitude is not None and longitude is not None else "user",
+                    location_source=location_source,
                     client_uuid=client_uuid,
                     area=resolved_area,
                     emergency_type="danger",
                     priority="critical",
                     message="Quick video-help request.",
-                    tracking_enabled=bool(client_uuid and latitude is not None and longitude is not None),
+                    tracking_enabled=bool(location_source == "gps" and client_uuid and latitude is not None and longitude is not None),
                     ip_address=request.META.get("REMOTE_ADDR"),
                     device_type=device["device_type"],
                     operating_system=device["operating_system"],
@@ -821,10 +904,10 @@ def quick_help(request: HttpRequest) -> HttpResponse:
             existing_request = EmergencyRequest.objects.filter(idempotency_key=idempotency_key).first()
             if existing_request:
                 request.session["request_id"] = existing_request.request_id
-                return redirect("submit_success")
+                return _quick_help_success_response(request)
             raise
         request.session["request_id"] = emergency_request.request_id
-        return redirect("submit_success")
+        return _quick_help_success_response(request)
     return render(request, "incidents/quick_help.html", {"idempotency_key": uuid.uuid4().hex})
 
 
@@ -1133,12 +1216,17 @@ def case_chat_feed(request: HttpRequest, referral_id: int) -> HttpResponse:
         if _rate_limited(request, f"referral-chat:{referral.pk}", limit=120, window=60):
             return JsonResponse({"error": "Too many chat messages. Please wait a moment and try again."}, status=429)
         body = request.POST.get("body", "").strip()
-        if not body:
-            return JsonResponse({"error": "Message cannot be empty."}, status=400)
+        attachment = request.FILES.get("file")
+        if not body and not attachment:
+            return JsonResponse({"error": "Write a message or attach a file."}, status=400)
+        if attachment and not _is_allowed_chat_file(attachment):
+            return JsonResponse({"error": "This file type is not allowed or the file is larger than 20 MB."}, status=400)
         recipient = referral.recipient_admin if is_sender else referral.referred_by
         if recipient is None:
             return JsonResponse({"error": "This referral has no chat recipient."}, status=409)
-        message_key = _write_idempotency_key(request, "case-message", referral.pk, body)
+        attachment_fingerprint = f"{attachment.name}:{attachment.size}" if attachment else ""
+        message_key = _write_idempotency_key(request, "case-message", referral.pk, body, attachment_fingerprint)
+        attachment_fields = _chat_file_fields(attachment) if attachment else {}
         CaseMessage.objects.get_or_create(
             idempotency_key=message_key,
             defaults={
@@ -1147,6 +1235,7 @@ def case_chat_feed(request: HttpRequest, referral_id: int) -> HttpResponse:
                 "sender": request.user,
                 "recipient": recipient,
                 "body": body[:4000],
+                **attachment_fields,
             },
         )
         broadcast_case_chat_update(referral.pk)
@@ -1162,6 +1251,9 @@ def case_chat_feed(request: HttpRequest, referral_id: int) -> HttpResponse:
             {
                 "id": item.pk,
                 "body": item.body,
+                "attachment_url": reverse("case_chat_file", args=[item.pk]) if item.attachment else "",
+                "attachment_name": item.attachment_name,
+                "attachment_size": item.attachment_size,
                 "mine": item.sender_id == request.user.pk,
                 "sender": "You" if item.sender_id == request.user.pk else item.sender.get_username(),
                 "created_at": timezone.localtime(item.created_at).strftime("%d %b %Y · %H:%M"),
@@ -1170,6 +1262,28 @@ def case_chat_feed(request: HttpRequest, referral_id: int) -> HttpResponse:
         ],
         "unread": referral.messages.filter(recipient=request.user, read_at__isnull=True).count(),
     })
+
+
+@login_required
+def case_chat_file(request: HttpRequest, message_id: int) -> HttpResponse:
+    message = CaseMessage.objects.select_related("referral").filter(pk=message_id).first()
+    if message is None or not message.attachment:
+        return HttpResponse(status=404)
+    if _case_chat_participants(request, message.referral) is None:
+        return HttpResponseForbidden("Case chat access is required.")
+    filename = Path(message.attachment_name or message.attachment.name).name.replace('"', "")
+    try:
+        file_handle = message.attachment.open("rb")
+    except (FileNotFoundError, ValueError):
+        return HttpResponse(status=404)
+    response = FileResponse(
+        file_handle,
+        content_type=message.attachment_content_type or mimetypes.guess_type(message.attachment.name)[0] or "application/octet-stream",
+    )
+    disposition = "attachment" if request.GET.get("download") == "1" else "inline"
+    response["Content-Disposition"] = f'{disposition}; filename="{filename}"'
+    response["X-Content-Type-Options"] = "nosniff"
+    return response
 
 
 @login_required(login_url="/institution/login/")
@@ -1264,8 +1378,13 @@ def institution_case(request: HttpRequest, referral_id: int) -> HttpResponse:
         action = request.POST.get("action")
         if action == "message":
             body = request.POST.get("body", "").strip()
-            if body:
-                message_key = _write_idempotency_key(request, "institution-message", referral.pk, body)
+            attachment = request.FILES.get("file")
+            if body or attachment:
+                if attachment and not _is_allowed_chat_file(attachment):
+                    messages.error(request, "This file type is not allowed or the file is larger than 20 MB.")
+                    return redirect("institution_case", referral_id=referral.pk)
+                attachment_fingerprint = f"{attachment.name}:{attachment.size}" if attachment else ""
+                message_key = _write_idempotency_key(request, "institution-message", referral.pk, body, attachment_fingerprint)
                 CaseMessage.objects.get_or_create(
                     idempotency_key=message_key,
                     defaults={
@@ -1273,12 +1392,13 @@ def institution_case(request: HttpRequest, referral_id: int) -> HttpResponse:
                         "incident": referral.incident,
                         "sender": request.user,
                         "recipient": referral.referred_by,
-                        "body": body,
+                        "body": body[:4000],
+                        **(_chat_file_fields(attachment) if attachment else {}),
                     },
                 )
                 messages.success(request, "Message sent to the referring responder.")
             else:
-                messages.error(request, "Write a message before sending.")
+                messages.error(request, "Write a message or attach a file.")
         elif action == "call":
             call_key = _write_idempotency_key(request, "institution-call", referral.pk)
             CallRequest.objects.get_or_create(
@@ -1664,37 +1784,45 @@ def inhouse_chat(request: HttpRequest) -> HttpResponse:
     except (TypeError, ValueError):
         selected_peer_id = None
     selected_profile = next((profile for profile in profiles if profile.user_id == selected_peer_id), None)
-    conversation = _inhouse_conversation_for_users(request.user, selected_profile.user) if selected_profile else None
+    conversation = None
+    if selected_profile:
+        user_one_id, user_two_id = sorted((request.user.pk, selected_profile.user_id))
+        conversation, _ = InHouseConversation.objects.get_or_create(
+            user_one_id=user_one_id,
+            user_two_id=user_two_id,
+        )
     is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
 
     if request.method == "POST":
         body = request.POST.get("body", "").strip()
+        attachment = request.FILES.get("file")
         if selected_profile is None:
             if is_ajax:
                 return JsonResponse({"error": "Choose an admin before sending."}, status=400)
             messages.error(request, "Choose an admin before sending a message.")
-        elif not body:
+        elif not body and not attachment:
             if is_ajax:
-                return JsonResponse({"error": "Write a message before sending."}, status=400)
-            messages.error(request, "Write a message before sending.")
+                return JsonResponse({"error": "Write a message or attach a file."}, status=400)
+            messages.error(request, "Write a message or attach a file.")
+        elif attachment and not _is_allowed_chat_file(attachment):
+            if is_ajax:
+                return JsonResponse({"error": "This file type is not allowed or the file is larger than 20 MB."}, status=400)
+            messages.error(request, "This file type is not allowed or the file is larger than 20 MB.")
         elif len(body) > 4000:
             if is_ajax:
                 return JsonResponse({"error": "Messages cannot be longer than 4,000 characters."}, status=400)
             messages.error(request, "Messages cannot be longer than 4,000 characters.")
         else:
-            user_one_id, user_two_id = sorted((request.user.pk, selected_profile.user_id))
-            conversation, _ = InHouseConversation.objects.get_or_create(
-                user_one_id=user_one_id,
-                user_two_id=user_two_id,
-            )
-            message_key = _write_idempotency_key(request, "inhouse-message", conversation.pk, body)
+            attachment_fingerprint = f"{attachment.name}:{attachment.size}" if attachment else ""
+            message_key = _write_idempotency_key(request, "inhouse-message", conversation.pk, body, attachment_fingerprint)
             InHouseMessage.objects.get_or_create(
                 idempotency_key=message_key,
                 defaults={
                     "conversation": conversation,
                     "sender": request.user,
                     "recipient": selected_profile.user,
-                    "body": body,
+                    "body": body[:4000],
+                    **(_chat_file_fields(attachment) if attachment else {}),
                 },
             )
             conversation.save(update_fields=["updated_at"])
@@ -1719,6 +1847,9 @@ def inhouse_chat(request: HttpRequest) -> HttpResponse:
                 {
                     "id": item.pk,
                     "body": item.body,
+                    "attachment_url": reverse("inhouse_chat_file", args=[item.pk]) if item.attachment else "",
+                    "attachment_name": item.attachment_name,
+                    "attachment_size": item.attachment_size,
                     "mine": item.sender_id == request.user.pk,
                     "sender_code": sender_codes.get(item.sender_id, "non"),
                     "created_at": timezone.localtime(item.created_at).strftime("%d %b %Y · %H:%M"),
@@ -1739,6 +1870,31 @@ def inhouse_chat(request: HttpRequest) -> HttpResponse:
         "conversation_messages": conversation_messages,
         "websocket_token": websocket_access_token(request, "inhouse", [conversation.pk]) if conversation else "",
     })
+
+
+@login_required
+def inhouse_chat_file(request: HttpRequest, message_id: int) -> HttpResponse:
+    if not _can_access_dashboard(request.user):
+        return HttpResponseForbidden("Dashboard access is required.")
+    message = InHouseMessage.objects.select_related("conversation").filter(pk=message_id).first()
+    if message is None or not message.attachment:
+        return HttpResponse(status=404)
+    conversation = message.conversation
+    if request.user.pk not in {conversation.user_one_id, conversation.user_two_id}:
+        return HttpResponseForbidden("In-house chat access is required.")
+    filename = Path(message.attachment_name or message.attachment.name).name.replace('"', "")
+    try:
+        file_handle = message.attachment.open("rb")
+    except (FileNotFoundError, ValueError):
+        return HttpResponse(status=404)
+    response = FileResponse(
+        file_handle,
+        content_type=message.attachment_content_type or mimetypes.guess_type(message.attachment.name)[0] or "application/octet-stream",
+    )
+    disposition = "attachment" if request.GET.get("download") == "1" else "inline"
+    response["Content-Disposition"] = f'{disposition}; filename="{filename}"'
+    response["X-Content-Type-Options"] = "nosniff"
+    return response
 
 
 @login_required
@@ -1806,6 +1962,7 @@ def dashboard_area_activity(request: HttpRequest) -> HttpResponse:
         "area_chart_data": area_chart_data,
         "map_points": map_points,
         "boundary_geojson": boundary_geojson,
+        "report_incidents": all_incidents,
     })
 
 
@@ -2147,6 +2304,16 @@ def dashboard_incident(request: HttpRequest, incident_id: int) -> HttpResponse:
                 .exclude(audio="")
                 .values_list("audio", flat=True)
             )
+            media_files.extend(
+                EmergencyChatMessage.objects.filter(room__incident=incident)
+                .exclude(attachment="")
+                .values_list("attachment", flat=True)
+            )
+            media_files.extend(
+                CaseMessage.objects.filter(incident=incident)
+                .exclude(attachment="")
+                .values_list("attachment", flat=True)
+            )
             with transaction.atomic():
                 incident.delete()
                 case_request.delete()
@@ -2201,8 +2368,13 @@ def dashboard_incident(request: HttpRequest, incident_id: int) -> HttpResponse:
                 recipient_admin__institution_profile__isnull=False,
             )
             body = request.POST.get("body", "").strip()
-            if body:
-                message_key = _write_idempotency_key(request, "case-message", referral.pk, body)
+            attachment = request.FILES.get("file")
+            if body or attachment:
+                if attachment and not _is_allowed_chat_file(attachment):
+                    messages.error(request, "This file type is not allowed or the file is larger than 20 MB.")
+                    return redirect("dashboard_incident", incident_id=incident.pk)
+                attachment_fingerprint = f"{attachment.name}:{attachment.size}" if attachment else ""
+                message_key = _write_idempotency_key(request, "case-message", referral.pk, body, attachment_fingerprint)
                 CaseMessage.objects.get_or_create(
                     idempotency_key=message_key,
                     defaults={
@@ -2210,13 +2382,14 @@ def dashboard_incident(request: HttpRequest, incident_id: int) -> HttpResponse:
                         "incident": incident,
                         "sender": request.user,
                         "recipient": referral.recipient_admin,
-                        "body": body,
+                        "body": body[:4000],
+                        **(_chat_file_fields(attachment) if attachment else {}),
                     },
                 )
                 broadcast_case_chat_update(referral.pk)
                 messages.success(request, "Message sent to the receiving institution.")
             else:
-                messages.error(request, "Write a message before sending.")
+                messages.error(request, "Write a message or attach a file.")
             return redirect("dashboard_incident", incident_id=incident.pk)
         if action == "call_response":
             call_request = get_object_or_404(
@@ -2363,6 +2536,31 @@ def emergency_chat_audio(request: HttpRequest, message_id: int) -> HttpResponse:
         content_type=mimetypes.guess_type(message.audio.name)[0] or "application/octet-stream",
     )
     response["Content-Disposition"] = f'inline; filename="{filename}"'
+    response["X-Content-Type-Options"] = "nosniff"
+    return response
+
+
+def emergency_chat_file(request: HttpRequest, message_id: int) -> HttpResponse:
+    message = EmergencyChatMessage.objects.select_related("room__incident").filter(pk=message_id).first()
+    if message is None or not message.attachment:
+        return HttpResponse(status=404)
+    room = message.room
+    if room.expires_at <= timezone.now():
+        return HttpResponse(status=404)
+    allowed, _ = _can_access_emergency_chat(request, room.incident)
+    if not allowed:
+        return HttpResponseForbidden("Emergency chat access is required.")
+    filename = Path(message.attachment_name or message.attachment.name).name.replace('"', "")
+    try:
+        file_handle = message.attachment.open("rb")
+    except (FileNotFoundError, ValueError):
+        return HttpResponse(status=404)
+    response = FileResponse(
+        file_handle,
+        content_type=message.attachment_content_type or mimetypes.guess_type(message.attachment.name)[0] or "application/octet-stream",
+    )
+    disposition = "attachment" if request.GET.get("download") == "1" else "inline"
+    response["Content-Disposition"] = f'{disposition}; filename="{filename}"'
     response["X-Content-Type-Options"] = "nosniff"
     return response
 

@@ -41,7 +41,7 @@
   </form>
 </div>
 
-<section class="operations-stats">
+<section class="operations-stats" data-report-section data-report-label="Operations totals">
   <div><small>All cases</small><strong>{{ total_cases }}</strong></div>
   <div><small>Open cases</small><strong>{{ active_cases }}</strong></div>
   <div><small>Resolved cases</small><strong>{{ resolved_cases }}</strong></div>
@@ -82,7 +82,7 @@
 {% endif %}
 
 {% if show_case_results %}
-<section class="queue-panel operations-panel">
+<section class="queue-panel operations-panel" data-report-section data-report-label="Operations case register">
   <div class="panel-heading">
     <div>
       <h2>{% if selected_card %}{{ selected_card.name }} cases{% else %}Case search results{% endif %}</h2>
@@ -108,7 +108,7 @@
   {% if cases %}
   <div class="incident-list">
     {% for incident in cases %}
-    <a class="incident-row" href="{% url 'dashboard_incident' incident.pk %}">
+    <a class="incident-row" data-report-date="{{ incident.request.created_at|date:'Y-m-d' }}" href="{% url 'dashboard_incident' incident.pk %}">
       <div class="priority-bar priority-{{ incident.request.priority }}"></div>
       <div class="incident-main">
         <div class="incident-top">

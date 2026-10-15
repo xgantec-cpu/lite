@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Request received</title>
   <link rel="stylesheet" href="{% static 'css/site.css' %}?v=20261001">
-  {% if chat_room %}<link rel="stylesheet" href="{% static 'css/emergency-chat.css' %}?v=20261002">{% endif %}
+  {% if chat_room %}<link rel="stylesheet" href="{% static 'css/emergency-chat.css' %}?v=20261032">{% endif %}
 </head>
 <body>
   <main class="card success success-card">
@@ -131,10 +131,11 @@
     {% endif %}
 
     {% if chat_room %}
-    <a class="emergency-chat-open-link" href="{% url 'emergency_chat_page' incident.pk %}?access={{ public_chat_token|urlencode }}" data-public-chat-link>
-      <span class="emergency-chat-invite-icon">◌</span>
-      <span><strong>{% if chat_room.accepted_at %}Resume secure chat{% else %}Can you chat with us?{% endif %}</strong><small>{% if chat_room.accepted_at %}Re-open the conversation with the assigned response team.{% else %}Open the full-screen secure chat with the assigned response team.{% endif %} This link remains available after a refresh; messages are retained for 48 hours. Keep it private.</small></span>
-      <b>Open chat →</b>
+    <a class="emergency-chat-open-link" href="{% url 'emergency_chat_page' incident.pk %}?access={{ public_chat_token|urlencode }}" data-public-chat-link aria-label="Open secure chat with the response team" title="Open secure chat with the response team">
+      <span class="emergency-chat-launcher-icon" aria-hidden="true">✉</span>
+      <span class="emergency-chat-launcher-copy"><strong>Chat</strong><small>Response team</small></span>
+      <span class="emergency-chat-open-badge"{% if not chat_unread_count %} aria-hidden="true"{% endif %}>{% if chat_unread_count %}{{ chat_unread_count }}{% else %}●{% endif %}</span>
+      <span class="emergency-chat-open-link-accessible">Can you chat with us? Open chat →</span>
     </a>
     {% endif %}
 

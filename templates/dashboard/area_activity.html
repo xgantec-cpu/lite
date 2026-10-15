@@ -2,7 +2,7 @@
 {% load static %}
 {% block title %}Cases by district{% endblock %}
 {% block content %}
-<div class="page-heading">
+<div class="page-heading" data-report-section data-report-label="Page overview" data-report-period="{{ period }}">
   <div>
     <div class="eyebrow">District intelligence</div>
     <h1>Cases by district</h1>
@@ -18,7 +18,7 @@
 </div>
 
 <div class="area-operations-top">
-<div class="overview-grid overview-shell area-page-card-shell">
+<div class="overview-grid overview-shell area-page-card-shell" data-report-section data-report-label="Overview metrics">
 <section class="stat-grid">
   {% if stats.active >= 8 %}
   <a class="stat-card stat-link severity-critical" href="{% url 'dashboard_incoming' %}"><div class="stat-icon red">!</div><div><small>Active incidents</small><strong>{{ stats.active }}</strong><span class="stat-note">Open incoming cases <b>→</b></span></div></a>
@@ -61,11 +61,11 @@
   {% endif %}
 </section>
 </div>
-<section class="map-panel"><div class="panel-heading"><div><h2>Incident map</h2><p>Start from the national view, then tap any case marker to fly directly to its GPS location.</p></div><div class="map-panel-actions"><span class="map-key"><i class="map-key-dot"></i>Reported location</span><a class="map-global-link" href="{% url 'dashboard_global_map' %}">Open global map <span>↗</span></a></div></div><div class="map-wrap"><div id="incident-map"></div>{% if map_points %}<div class="map-dive-modal" data-map-dive-modal role="dialog" aria-modal="true" aria-labelledby="map-dive-title"><div class="map-dive-dialog"><span class="map-dive-kicker">Live response map</span><strong id="map-dive-title">Dive into case locations?</strong><p>Would you like to zoom from the national view into the reported emergency locations?</p><div class="map-dive-actions"><button class="map-dive-accept" data-map-dive-accept type="button">Yes, dive in <span>→</span></button><button class="map-dive-later" data-map-dive-later type="button">Not now</button></div></div></div>{% endif %}<div class="map-journey-hint"><span class="map-journey-dot"></span><span>Tap a marker to inspect the exact location</span></div>{% if not map_points %}<div class="map-empty"><strong>Location not tagged</strong><span>No GPS coordinates are available for this view.</span></div>{% endif %}</div></section>
+<section class="map-panel" data-report-section data-report-label="Incident map"><div class="panel-heading"><div><h2>Incident map</h2><p>Start from the national view, then tap any case marker to fly directly to its GPS location.</p></div><div class="map-panel-actions"><span class="map-key"><i class="map-key-dot"></i>Reported location</span><a class="map-global-link" href="{% url 'dashboard_global_map' %}">Open global map <span>↗</span></a></div></div><div class="map-wrap"><div id="incident-map"></div>{% if map_points %}<div class="map-dive-modal" data-map-dive-modal role="dialog" aria-modal="true" aria-labelledby="map-dive-title"><div class="map-dive-dialog"><span class="map-dive-kicker">Live response map</span><strong id="map-dive-title">Dive into case locations?</strong><p>Would you like to zoom from the national view into the reported emergency locations?</p><div class="map-dive-actions"><button class="map-dive-accept" data-map-dive-accept type="button">Yes, dive in <span>→</span></button><button class="map-dive-later" data-map-dive-later type="button">Not now</button></div></div></div>{% endif %}<div class="map-journey-hint"><span class="map-journey-dot"></span><span>Tap a marker to inspect the exact location</span></div>{% if not map_points %}<div class="map-empty"><strong>Location not tagged</strong><span>No GPS coordinates are available for this view.</span></div>{% endif %}</div></section>
 </div>
 
 <section class="area-overview-grid">
-  <div class="info-panel trend-panel">
+  <div class="info-panel trend-panel" data-report-section data-report-label="Case volume trend">
     <div class="panel-heading">
       <div>
         <h2>Case volume trend</h2>
@@ -109,7 +109,7 @@
   </div>
 
   <div class="district-side-stack">
-    <aside class="info-panel district-list-panel">
+    <aside class="info-panel district-list-panel" data-report-section data-report-label="District snapshot">
       <div class="panel-heading">
         <div>
           <h2>District snapshot</h2>
@@ -144,7 +144,7 @@
     </aside>
 
     {% if area_ranking %}
-      <section class="info-panel district-pie-card" data-district-pie-card data-live-url="{% url 'dashboard_area_activity' %}?period={{ period }}&format=json">
+      <section class="info-panel district-pie-card" data-report-section data-report-label="Live case mix" data-district-pie-card data-live-url="{% url 'dashboard_area_activity' %}?period={{ period }}&format=json">
         <div class="district-pie-heading">
           <div>
             <h3>Live case mix</h3>
@@ -166,7 +166,7 @@
   </div>
 </section>
 
-<section class="info-panel insight-panel area-summary-panel">
+<section class="info-panel insight-panel area-summary-panel" data-report-section data-report-label="Area summary">
   <div class="panel-heading">
     <div>
       <h2>Area summary</h2>
@@ -190,6 +190,24 @@
         <span>{{ top_area.count }} live cases</span>
       </div>
     {% endif %}
+  </div>
+</section>
+
+<section class="report-data-source" data-report-section data-report-label="District cases">
+  <div class="panel-heading"><div><h2>District cases</h2><p>Case register available for complete or day-filtered reporting.</p></div></div>
+  <div class="report-case-register">
+    {% for incident in report_incidents %}
+      <article class="report-case-row" data-report-date="{{ incident.request.created_at|date:'Y-m-d' }}">
+        <strong>{{ incident.request.request_id }}</strong>
+        <span>{{ incident.assigned_area|default:"Area not assigned" }}</span>
+        <span>{{ incident.request.get_emergency_type_display }}</span>
+        <span>{{ incident.get_status_display }}</span>
+        <span>{{ incident.request.get_priority_display }}</span>
+        <time datetime="{{ incident.request.created_at|date:'c' }}">{{ incident.request.created_at|date:"d M Y, H:i" }}</time>
+      </article>
+    {% empty %}
+      <p class="report-no-results">No district cases are available.</p>
+    {% endfor %}
   </div>
 </section>
 

@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Quick video help</title>
-  <link rel="stylesheet" href="{% static 'css/site.css' %}?v=20261018"><link rel="stylesheet" href="{% static 'css/form-errors.css' %}?v=20261001"><link rel="stylesheet" href="{% static 'css/video-help.css' %}?v=20261028"><link rel="stylesheet" href="{% static 'css/professional.css' %}?v=20261001">
+  <link rel="stylesheet" href="{% static 'css/site.css' %}?v=20261018"><link rel="stylesheet" href="{% static 'css/form-errors.css' %}?v=20261001"><link rel="stylesheet" href="{% static 'css/video-help.css' %}?v=20261031"><link rel="stylesheet" href="{% static 'css/professional.css' %}?v=20261001">
 </head>
 <body class="quick-page">
 <header class="public-motto-header"><span>Saving lives is better.</span></header>
@@ -16,11 +16,12 @@
   <p class="quick-intro">Show what is happening. Your location will be captured automatically. For critical cases, responders can receive periodic updates while this page remains open. No typing is required.</p>
   {% if error %}<div class="error">{{ error }}</div>{% endif %}
   <form method="post" id="quick-form" enctype="multipart/form-data">{% csrf_token %}<input type="hidden" name="idempotency_key" value="{{ idempotency_key }}">
-    <input type="hidden" name="latitude" id="quick-latitude"><input type="hidden" name="longitude" id="quick-longitude"><input type="hidden" name="location_accuracy" id="quick-accuracy"><input type="hidden" name="client_uuid" id="quick-client-uuid"><input type="hidden" name="recording_duration" id="quick-duration"><input type="file" name="video" id="quick-video-file" accept="video/*" hidden>
-    <div class="quick-preview-wrap"><video id="quick-preview" playsinline muted></video><div class="quick-overlay" id="quick-overlay"><button class="quick-overlay-trigger" type="button" id="quick-camera-toggle" aria-label="Start recording" aria-pressed="false"><span class="record-ring"></span><span class="quick-toggle-label" id="quick-toggle-label">Start</span></button><strong id="quick-overlay-label">Tap the red circle to start</strong></div><button class="quick-camera-switch" type="button" id="quick-camera-switch">Use front camera</button></div>
+    <input type="hidden" name="latitude" id="quick-latitude"><input type="hidden" name="longitude" id="quick-longitude"><input type="hidden" name="location_accuracy" id="quick-accuracy"><input type="hidden" name="location_source" id="quick-location-source" value="user"><input type="hidden" name="client_uuid" id="quick-client-uuid"><input type="hidden" name="recording_duration" id="quick-duration"><input type="file" name="video" id="quick-video-file" accept="video/*" hidden>
+    <div class="quick-preview-wrap"><video id="quick-preview" playsinline muted autoplay></video><div class="quick-overlay" id="quick-overlay"><button class="quick-overlay-trigger" type="button" id="quick-camera-toggle" aria-label="Start recording" aria-pressed="false"><span class="record-ring"></span><span class="quick-toggle-label" id="quick-toggle-label">Start</span></button><strong id="quick-overlay-label">Tap the red circle to start</strong></div><button class="quick-camera-switch" type="button" id="quick-camera-switch">Use front camera</button></div>
     <div class="quick-status"><span id="quick-status">Location will be requested when you begin.</span><strong id="quick-timer">00:00 / 00:20</strong></div>
-    <p class="quick-note">Tap Start to record and Stop to finish. The video submits automatically after recording, or at 20 seconds. Quality adapts to your connection: 480p, 720p, or 1080p.</p>
+    <p class="quick-note">Tap Start to record and Stop to finish. The video submits automatically after recording, or at 20 seconds. Maximum quality is 720p.</p>
   </form>
+  <div class="quick-send-bar" id="quick-send-bar" hidden><button class="quick-send-button" type="button" id="quick-send">Send video</button></div>
 </main>
 <script>
 const quickForm = document.getElementById('quick-form');
@@ -33,22 +34,75 @@ const quickOverlayLabel = document.getElementById('quick-overlay-label');
 const quickToggleLabel = document.getElementById('quick-toggle-label');
 const quickCameraToggle = document.getElementById('quick-camera-toggle');
 const quickCameraSwitch = document.getElementById('quick-camera-switch');
-let quickRecorder, quickStream, quickChunks = [], quickStarted, quickInterval, quickAutoSubmit, quickSubmitAfterStop = false;
+const quickSendBar = document.getElementById('quick-send-bar');
+const quickSendButton = document.getElementById('quick-send');
+let quickRecorder, quickStream, quickChunks = [], quickStarted, quickInterval, quickSubmitAfterStop = false;
 let quickFacingMode = 'environment';
 let quickCameraBusy = false;
+let quickStarting = false;
+let quickRecording = false;
+let quickStopping = false;
+let quickSending = false;
+const quickLastLocationKey = 'rapid_response_last_location';
+const quickLastLocationMaxAge = 24 * 60 * 60 * 1000;
+
+function quickSetLocation(latitude, longitude, accuracy) {
+  document.getElementById('quick-latitude').value = latitude;
+  document.getElementById('quick-longitude').value = longitude;
+  document.getElementById('quick-accuracy').value = accuracy || '';
+}
+
+function quickSetLocationSource(source) {
+  document.getElementById('quick-location-source').value = source;
+}
+
+function quickSaveLocation(position) {
+  const location = {
+    latitude: position.coords.latitude,
+    longitude: position.coords.longitude,
+    accuracy: position.coords.accuracy || '',
+    capturedAt: Date.now(),
+  };
+  try { window.localStorage.setItem(quickLastLocationKey, JSON.stringify(location)); } catch (error) {}
+  return location;
+}
+
+function quickSavedLocation() {
+  try {
+    const location = JSON.parse(window.localStorage.getItem(quickLastLocationKey) || 'null');
+    if (!location || !location.capturedAt || Date.now() - location.capturedAt > quickLastLocationMaxAge) return null;
+    if (typeof location.latitude !== 'number' || typeof location.longitude !== 'number') return null;
+    return location;
+  } catch (error) {
+    return null;
+  }
+}
 
 function quickLocation() {
   return new Promise((resolve) => {
     document.getElementById('quick-client-uuid').value = quickClientUuid();
-    if (!navigator.geolocation) return resolve();
+    const useLastLocation = () => {
+      const location = quickSavedLocation();
+      if (!location) {
+        quickStatus.textContent = 'Location unavailable — video can still be sent';
+        resolve();
+        return;
+      }
+      quickSetLocation(location.latitude, location.longitude, location.accuracy);
+      quickSetLocationSource('cached');
+      const capturedAt = new Date(location.capturedAt).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+      quickStatus.textContent = 'Using last known browser location from ' + capturedAt;
+      resolve();
+    };
+    if (!navigator.geolocation) return useLastLocation();
     navigator.geolocation.getCurrentPosition((position) => {
-      document.getElementById('quick-latitude').value = position.coords.latitude;
-      document.getElementById('quick-longitude').value = position.coords.longitude;
-      document.getElementById('quick-accuracy').value = position.coords.accuracy || '';
+      const location = quickSaveLocation(position);
+      quickSetLocation(location.latitude, location.longitude, location.accuracy);
+      quickSetLocationSource('gps');
       document.getElementById('quick-client-uuid').value = quickClientUuid();
       quickStatus.textContent = 'Location captured — recording is ready';
       resolve();
-    }, () => { quickStatus.textContent = 'Location unavailable — video can still be sent'; resolve(); }, {enableHighAccuracy: true, timeout: 5000});
+    }, useLastLocation, {enableHighAccuracy: true, timeout: 5000, maximumAge: 10000});
   });
 }
 
@@ -87,18 +141,19 @@ function quickQualityProfile() {
   const effectiveType = connection && connection.effectiveType;
   const downlink = Number(connection && connection.downlink);
   if (connection && connection.saveData || effectiveType === 'slow-2g' || effectiveType === '2g' || (downlink && downlink < 1)) {
-    return {label: '480p', width: 854, height: 480, videoBitsPerSecond: 650000};
+    return {label: '480p', width: 854, height: 480, videoBitsPerSecond: 850000};
   }
   if (effectiveType === '3g' || (downlink && downlink < 3)) {
-    return {label: '720p', width: 1280, height: 720, videoBitsPerSecond: 1400000};
+    return {label: '720p', width: 1280, height: 720, videoBitsPerSecond: 1700000};
   }
-  return {label: '1080p', width: 1920, height: 1080, videoBitsPerSecond: 2400000};
+  return {label: '720p', width: 1280, height: 720, videoBitsPerSecond: 2200000};
 }
 
 function quickQualityConstraints(profile) {
   return {
     width: {ideal: profile.width, max: profile.width},
     height: {ideal: profile.height, max: profile.height},
+    frameRate: {ideal: 24, max: 30},
   };
 }
 
@@ -116,6 +171,85 @@ function quickRecorderOptions(profile) {
   return options;
 }
 
+function quickEnterFullscreen() {
+  if (document.fullscreenElement) return;
+  const request = document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen;
+  if (!request) return;
+  const result = request.call(document.documentElement);
+  if (result && typeof result.catch === 'function') result.catch(() => {});
+}
+
+function quickSubmitForm() {
+  if (quickSending) return;
+  const file = quickFile.files && quickFile.files[0];
+  if (!file || !file.size) {
+    quickStatus.textContent = 'No video was captured — tap Start and try again';
+    if (quickSendButton) {
+      quickSendButton.disabled = false;
+      quickSendButton.textContent = 'Send video';
+    }
+    return;
+  }
+  quickSending = true;
+  if (quickSendButton) {
+    quickSendButton.disabled = true;
+    quickSendButton.textContent = 'Sending video…';
+  }
+  quickStatus.textContent = 'Sending video securely… 0%';
+  const upload = new XMLHttpRequest();
+  upload.open('POST', quickForm.action || window.location.href, true);
+  upload.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+  upload.timeout = 180000;
+  upload.upload.addEventListener('progress', (event) => {
+    if (!event.lengthComputable) return;
+    quickStatus.textContent = 'Sending video securely… ' + Math.round((event.loaded / event.total) * 100) + '%';
+  });
+  upload.upload.addEventListener('load', () => {
+    quickStatus.textContent = 'Video uploaded — finishing secure submission…';
+  });
+  const failedUpload = (message) => {
+    quickSending = false;
+    quickStatus.textContent = message;
+    if (quickSendButton) {
+      quickSendButton.disabled = false;
+      quickSendButton.textContent = 'Retry send';
+    }
+  };
+  upload.addEventListener('error', () => failedUpload('The connection dropped before the video was sent. Tap Retry send.'));
+  upload.addEventListener('abort', () => failedUpload('The video upload was interrupted. Tap Retry send.'));
+  upload.addEventListener('timeout', () => failedUpload('The upload took too long. Check your connection and retry.'));
+  upload.addEventListener('load', () => {
+    const contentType = upload.getResponseHeader('Content-Type') || '';
+    if (contentType.includes('application/json')) {
+      try {
+        const payload = JSON.parse(upload.responseText || '{}');
+        if (upload.status >= 200 && upload.status < 300 && payload.success && payload.redirect_url) {
+          window.location.assign(new URL(payload.redirect_url, window.location.href).toString());
+          return;
+        }
+        if (payload.error) {
+          failedUpload(payload.error);
+          return;
+        }
+      } catch (error) {}
+    }
+    const responseUrl = new URL(upload.responseURL || window.location.href, window.location.href);
+    const successPath = "{% url 'submit_success' %}";
+    if (upload.status >= 200 && upload.status < 300 && responseUrl.pathname === successPath) {
+      window.location.assign(responseUrl.toString());
+      return;
+    }
+    let message = 'The video could not be sent. Please try again.';
+    try {
+      const documentCopy = new DOMParser().parseFromString(upload.responseText, 'text/html');
+      const serverError = documentCopy.querySelector('.error');
+      if (serverError && serverError.textContent.trim()) message = serverError.textContent.trim();
+    } catch (error) {}
+    failedUpload(message);
+  });
+  upload.send(new FormData(quickForm));
+}
+
 function quickCameraLabel() {
   return quickFacingMode === 'environment' ? 'Use front camera' : 'Use back camera';
 }
@@ -123,19 +257,30 @@ function quickCameraLabel() {
 async function quickOpenCamera() {
   if (quickStream && quickStream.getVideoTracks().some((track) => track.readyState === 'live')) return true;
   const profile = quickQualityProfile();
-  const video = Object.assign({facingMode: {exact: quickFacingMode}}, quickQualityConstraints(profile));
-  try {
-    quickStream = await navigator.mediaDevices.getUserMedia({video, audio: true});
-  } catch (error) {
+  const quality = quickQualityConstraints(profile);
+  const attempts = [
+    {video: Object.assign({facingMode: {exact: quickFacingMode}}, quality), audio: true},
+    {video: Object.assign({facingMode: {exact: quickFacingMode}}, quality), audio: false},
+    {video: Object.assign({facingMode: {ideal: quickFacingMode}}, quality), audio: false},
+    {video: {facingMode: {ideal: quickFacingMode}}, audio: false},
+    {video: true, audio: false},
+  ];
+  let lastError;
+  for (const constraints of attempts) {
     try {
-      video.facingMode = {ideal: quickFacingMode};
-      quickStream = await navigator.mediaDevices.getUserMedia({video, audio: true});
-    } catch (fallbackError) {
-      quickStream = await navigator.mediaDevices.getUserMedia({video: {facingMode: {ideal: quickFacingMode}}, audio: true});
+      quickStream = await navigator.mediaDevices.getUserMedia(constraints);
+      break;
+    } catch (error) {
+      lastError = error;
     }
   }
+  if (!quickStream) {
+    throw lastError || new Error('Camera access failed');
+  }
   quickPreview.srcObject = quickStream;
-  await quickPreview.play();
+  quickPreview.muted = true;
+  quickPreview.autoplay = true;
+  await quickPreview.play().catch(() => {});
   quickCameraSwitch.textContent = quickCameraLabel();
   quickOverlay.hidden = false;
   quickOverlay.classList.remove('is-recording');
@@ -144,7 +289,7 @@ async function quickOpenCamera() {
 }
 
 async function quickSwitchCamera() {
-  if (quickCameraBusy) return;
+  if (quickCameraBusy || quickStarting) return;
   if (quickRecorder && quickRecorder.state !== 'inactive') {
     const videoTrack = quickStream && quickStream.getVideoTracks()[0];
     if (!videoTrack || typeof videoTrack.applyConstraints !== 'function') {
@@ -183,12 +328,19 @@ async function quickSwitchCamera() {
 }
 
 async function quickStartRecording() {
+  if (quickStarting || quickRecording) return;
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.MediaRecorder) {
-    quickStatus.textContent = 'Video recording is not supported on this device';
+    quickStatus.textContent = window.isSecureContext === false
+      ? 'Camera access requires HTTPS or localhost'
+      : 'Video recording is not supported on this device';
     return;
   }
+  quickStarting = true;
+  quickCameraToggle.disabled = true;
+  quickCameraSwitch.disabled = true;
+  quickStatus.textContent = 'Opening camera…';
   try {
-    await quickLocation();
+    quickEnterFullscreen();
     await quickOpenCamera();
     const quality = quickQualityProfile();
     await quickApplyQuality(quality);
@@ -200,8 +352,9 @@ async function quickStartRecording() {
     }
     quickRecorder.ondataavailable = (event) => { if (event.data.size) quickChunks.push(event.data); };
     quickRecorder.onstop = quickFinishRecording;
-    quickRecorder.start();
+    quickRecorder.start(1000);
     quickStarted = Date.now();
+    quickRecording = true;
     quickOverlay.classList.add('is-recording');
     quickOverlayLabel.textContent = 'Recording — tap the red circle to stop';
     quickCameraToggle.setAttribute('aria-label', 'Stop recording');
@@ -209,50 +362,87 @@ async function quickStartRecording() {
     quickToggleLabel.textContent = 'Stop';
     quickStatus.textContent = 'Recording at ' + quality.label + ' — show what is happening';
     quickInterval = setInterval(quickTick, 250);
+    quickCameraToggle.disabled = false;
+    quickLocation();
   } catch (error) {
-    quickStatus.textContent = 'Camera permission was not granted';
+    if (quickStream) quickStream.getTracks().forEach((track) => track.stop());
+    quickStream = null;
+    quickRecorder = null;
+    quickOverlay.classList.remove('is-recording');
+    quickCameraToggle.setAttribute('aria-pressed', 'false');
+    quickToggleLabel.textContent = 'Start';
+    const errorMessages = {
+      NotAllowedError: 'Allow camera access to start recording',
+      PermissionDeniedError: 'Allow camera access to start recording',
+      NotFoundError: 'No camera was found on this device',
+      NotReadableError: 'The camera is busy in another app',
+      OverconstrainedError: 'This camera cannot provide the requested quality',
+      SecurityError: 'Camera access requires HTTPS or localhost',
+    };
+    quickStatus.textContent = errorMessages[error.name] || 'Camera could not start — tap Start to try again';
+  } finally {
+    quickStarting = false;
+    quickCameraToggle.disabled = false;
+    quickCameraSwitch.disabled = false;
   }
 }
 
 function quickStopRecording(submitAfterStop = false) {
-  if (!quickRecorder || quickRecorder.state === 'inactive') return;
+  if (quickStopping || !quickRecording || !quickRecorder || quickRecorder.state === 'inactive') return;
   quickSubmitAfterStop = submitAfterStop;
+  quickRecording = false;
+  quickStopping = true;
+  quickCameraToggle.disabled = true;
   quickRecorder.stop();
   clearInterval(quickInterval);
-  if (quickStream) quickStream.getTracks().forEach((track) => track.stop());
   quickStatus.textContent = 'Video ready — sending automatically';
 }
 
 function quickFinishRecording() {
   const mimeType = quickRecorder.mimeType || 'video/webm';
   const blob = new Blob(quickChunks, {type: mimeType});
+  quickStopping = false;
+  if (!blob.size) {
+    quickStatus.textContent = 'No video data was captured — tap Start and try again';
+    quickCameraToggle.disabled = false;
+    if (quickSendBar) quickSendBar.hidden = true;
+    return;
+  }
   const extension = mimeType.includes('mp4') ? 'mp4' : 'webm';
   const transfer = new DataTransfer();
   transfer.items.add(new File([blob], 'emergency-' + Date.now() + '.' + extension, {type: mimeType}));
   quickFile.files = transfer.files;
   document.getElementById('quick-duration').value = Math.min(20, Math.max(1, Math.round((Date.now() - quickStarted) / 1000)));
   quickPreview.srcObject = null;
+  if (quickStream) quickStream.getTracks().forEach((track) => track.stop());
+  quickStream = null;
   quickPreview.src = URL.createObjectURL(blob);
   quickOverlay.hidden = true;
   quickCameraSwitch.hidden = true;
   quickCameraToggle.setAttribute('aria-label', 'Start recording');
   quickCameraToggle.setAttribute('aria-pressed', 'false');
   quickToggleLabel.textContent = 'Start';
+  if (quickSendBar) quickSendBar.hidden = false;
   if (quickSubmitAfterStop) {
     quickSubmitAfterStop = false;
-    quickForm.requestSubmit();
+    quickSubmitForm();
     return;
   }
-  quickAutoSubmit = setTimeout(() => quickForm.requestSubmit(), 4000);
+  quickSubmitForm();
 }
 
 function quickToggleRecording() {
+  if (quickStopping) return;
   if (quickRecorder && quickRecorder.state !== 'inactive') quickStopRecording();
   else quickStartRecording();
 }
 
 quickCameraToggle.addEventListener('click', quickToggleRecording);
 quickCameraSwitch.addEventListener('click', quickSwitchCamera);
-quickForm.addEventListener('submit', () => clearTimeout(quickAutoSubmit));
+quickSendButton.addEventListener('click', quickSubmitForm);
+quickForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  quickSubmitForm();
+});
 </script>
 </body></html>
