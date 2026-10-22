@@ -119,3 +119,50 @@ def area_name_for_boundary(boundary_name, available_names):
     if city_name in available:
         return city_name
     return None
+
+
+def route_area_names(origin_name, destination_name, available_names=None):
+    """Return an estimated district corridor between two area names.
+
+    This uses the installed Uganda district boundaries rather than inventing
+    coordinates. It is a safety-alert corridor, not turn-by-turn navigation;
+    the client should still confirm the road route before travelling.
+    """
+    available = set(available_names or [boundary["name"] for boundary in district_boundaries()])
+    boundaries = district_boundaries()
+
+    def boundary_for_area(area_name):
+        for boundary in boundaries:
+            if boundary["name"] == area_name:
+                return boundary
+            if area_name_for_boundary(boundary["name"], available) == area_name:
+                return boundary
+        return None
+
+    origin_boundary = boundary_for_area(origin_name)
+    destination_boundary = boundary_for_area(destination_name)
+    if origin_boundary is None or destination_boundary is None:
+        return [name for name in (origin_name, destination_name) if name]
+    if origin_name == destination_name:
+        return [origin_name]
+
+    origin_bbox = origin_boundary["bbox"]
+    destination_bbox = destination_boundary["bbox"]
+    origin_point = ((origin_bbox[0] + origin_bbox[2]) / 2, (origin_bbox[1] + origin_bbox[3]) / 2)
+    destination_point = ((destination_bbox[0] + destination_bbox[2]) / 2, (destination_bbox[1] + destination_bbox[3]) / 2)
+    distance = max(abs(destination_point[0] - origin_point[0]), abs(destination_point[1] - origin_point[1]))
+    steps = max(24, min(160, int(distance * 18)))
+    route = []
+    for step in range(steps + 1):
+        fraction = step / steps
+        longitude = origin_point[0] + (destination_point[0] - origin_point[0]) * fraction
+        latitude = origin_point[1] + (destination_point[1] - origin_point[1]) * fraction
+        boundary_name = boundary_name_for_point(latitude, longitude)
+        area_name = area_name_for_boundary(boundary_name, available) if boundary_name else None
+        if area_name and area_name not in route:
+            route.append(area_name)
+    if origin_name not in route:
+        route.insert(0, origin_name)
+    if destination_name not in route:
+        route.append(destination_name)
+    return route

@@ -55,7 +55,13 @@
 .rtc-call-decline:hover,
 .rtc-call-decline:focus-visible { background: #a8352e; }
 .rtc-call-button.active { background: #174b6c; }
-.rtc-call-controls audio { display: none; }
+.rtc-call-controls audio {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
 
 .official-chat-compose {
   display: grid;

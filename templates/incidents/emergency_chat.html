@@ -21,7 +21,7 @@
         <div><h1>Chat unavailable</h1><p>{{ error }}</p><a class="button button-primary" href="{% url 'home' %}">Return to start</a></div>
       </section>
     {% elif chat_room %}
-      <section class="emergency-chat-fullscreen" data-emergency-chat-widget data-chat-fullscreen="true" data-chat-role="{{ chat_role }}" data-chat-url="{% url 'emergency_chat' incident.pk %}{% if public_chat_token %}?access={{ public_chat_token|urlencode }}{% endif %}" data-chat-ws-url="/ws/chat/incidents/{{ incident.pk }}/?token={{ websocket_token|urlencode }}">
+      <section class="emergency-chat-fullscreen" data-emergency-chat-widget data-chat-fullscreen="true" data-chat-role="{{ chat_role }}" data-chat-url="{% url 'emergency_chat' incident.pk %}{% if public_chat_token %}?access={{ public_chat_token|urlencode }}{% endif %}" data-chat-ws-url="/ws/chat/incidents/{{ incident.pk }}/?token={{ websocket_token|urlencode }}" data-rtc-ice-servers="{{ rtc_ice_servers_json|escape }}">
         <div class="emergency-chat-page-title">
           <div><p class="eyebrow">Emergency report</p><h1>Secure response chat</h1><p>Reference <strong>{{ incident.request.request_id }}</strong> · You can refresh or return to this chat link.</p></div>
           <span class="emergency-chat-live"><i></i>Protected channel</span>
@@ -60,6 +60,6 @@
       </section>
     {% endif %}
   </main>
-  {% if chat_room %}<script src="{% static 'js/emergency-chat.js' %}?v=20261033"></script>{% endif %}
+  {% if chat_room %}<script src="{% static 'js/emergency-chat.js' %}?v=20261022-portal-audio"></script>{% endif %}
 </body>
 </html>

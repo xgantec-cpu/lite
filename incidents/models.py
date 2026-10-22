@@ -407,6 +407,90 @@ class IncidentNote(models.Model):
         return f"Note for {self.incident}"
 
 
+class PublicAlertSubscription(models.Model):
+    area = models.ForeignKey(LocationArea, on_delete=models.CASCADE, related_name="public_alert_subscriptions")
+    receives_area_alerts = models.BooleanField(default=True)
+    notification_areas = models.ManyToManyField(
+        LocationArea,
+        blank=True,
+        related_name="notification_area_subscriptions",
+    )
+    endpoint_hash = models.CharField(max_length=64, unique=True, editable=False)
+    endpoint = EncryptedTextField(max_length=2048)
+    p256dh = EncryptedTextField(max_length=255)
+    auth = EncryptedTextField(max_length=255)
+    client_uuid = models.UUIDField(null=True, blank=True, db_index=True)
+    user_agent = models.CharField(max_length=300, blank=True)
+    active = models.BooleanField(default=True)
+    last_seen_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-last_seen_at", "-pk"]
+        indexes = [
+            models.Index(fields=["area", "active"]),
+        ]
+
+    def __str__(self):
+        return f"Public alert subscription for {self.area}"
+
+
+class TravelSafetyPlan(models.Model):
+    subscription = models.ForeignKey(PublicAlertSubscription, on_delete=models.CASCADE, related_name="travel_plans")
+    client_uuid = models.UUIDField(null=True, blank=True, db_index=True)
+    origin_area = models.ForeignKey(LocationArea, on_delete=models.PROTECT, related_name="travel_origins")
+    destination_area = models.ForeignKey(LocationArea, on_delete=models.PROTECT, related_name="travel_destinations")
+    route_areas = models.ManyToManyField(LocationArea, blank=True, related_name="travel_safety_plans")
+    active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at", "-pk"]
+
+    def __str__(self):
+        return f"{self.origin_area} to {self.destination_area}"
+
+
+class AreaAlert(models.Model):
+    DELIVERY_STATUS_CHOICES = [
+        ("pending", "Pending delivery"),
+        ("sent", "Delivered"),
+        ("partial", "Partially delivered"),
+        ("failed", "Delivery failed"),
+        ("no_subscribers", "No opted-in subscribers"),
+        ("not_configured", "Push service not configured"),
+    ]
+    area = models.ForeignKey(LocationArea, on_delete=models.PROTECT, related_name="public_alerts")
+    created_by = models.ForeignKey(
+        get_user_model(),
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="public_area_alerts",
+    )
+    title = models.CharField(max_length=120)
+    body = EncryptedTextField(max_length=600)
+    issue_type = models.CharField(max_length=20, blank=True)
+    case_count_snapshot = models.PositiveIntegerField(default=0)
+    delivery_status = models.CharField(max_length=20, choices=DELIVERY_STATUS_CHOICES, default="pending")
+    recipient_count = models.PositiveIntegerField(default=0)
+    failed_count = models.PositiveIntegerField(default=0)
+    idempotency_key = models.CharField(max_length=64, unique=True, editable=False)
+    sent_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "-pk"]
+        indexes = [
+            models.Index(fields=["area", "created_at"]),
+            models.Index(fields=["delivery_status", "created_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.title} · {self.area}"
+
+
 class ReferralDestination(models.Model):
     DESTINATION_TYPES = [
         ("police_station", "Police station"),

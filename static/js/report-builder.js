@@ -1,7 +1,7 @@
 (function () {
   const dialog = document.querySelector('[data-report-dialog]');
   const openButton = document.querySelector('[data-report-open]');
-  const main = document.querySelector('main.content');
+  const main = document.querySelector('main[data-report-root], main.content, main');
   if (!dialog || !openButton || !main) return;
 
   const sectionList = dialog.querySelector('[data-report-sections]');
@@ -13,6 +13,10 @@
   const selectAllButton = dialog.querySelector('[data-report-select-all]');
   const clearAllButton = dialog.querySelector('[data-report-clear-all]');
   const reportLogo = dialog.dataset.reportLogo;
+  const reportOrganization = dialog.dataset.reportOrganization || '';
+  const reportRole = dialog.dataset.reportRole || '';
+  const reportArea = dialog.dataset.reportArea || '';
+  const reportSource = [reportOrganization, reportRole, reportArea].filter(Boolean).join(' · ');
   const scopeInputs = [...dialog.querySelectorAll('input[name="report-scope"]')];
   let sections = [];
 
@@ -77,7 +81,11 @@
     discoverSections();
     renderSectionChoices();
     const pageTitle = main.querySelector('h1');
-    titleField.value = pageTitle ? pageTitle.textContent.trim() : document.title.replace(/ · Rapid Response$/, '');
+    const pageLabel = pageTitle ? pageTitle.textContent.trim() : document.title.replace(/ · Rapid Response$/, '');
+    const defaultTitle = reportRole
+      ? [`${reportRole} report`, reportOrganization].filter(Boolean).join(' — ')
+      : [reportOrganization, pageLabel].filter(Boolean).join(' — ');
+    titleField.value = defaultTitle || 'Rapid Response report';
     dateField.value = '';
     dialog.hidden = false;
     if (typeof dialog.showModal === 'function') dialog.showModal();
@@ -181,17 +189,20 @@
     }
     const kicker = document.createElement('span');
     kicker.className = 'report-print-kicker';
-    kicker.textContent = 'Rapid Response · Official operations report';
+    kicker.textContent = reportRole ? `${reportRole} · Official operations report` : 'Rapid Response · Official operations report';
+    const source = document.createElement('p');
+    source.className = 'report-print-source';
+    source.textContent = reportSource ? `Prepared by ${reportSource}` : 'Prepared by the Rapid Response operations network';
     const title = document.createElement('h1');
     const reportTitle = titleField.value.trim() || 'Rapid Response report';
     title.textContent = reportTitle;
     const description = document.createElement('p');
     description.className = 'report-print-description';
-    description.textContent = `This is an official report of ${reportTitle.toLowerCase()}, covering ${describeScope(fullPage, selected)} for ${describePeriod()}. It presents the available incident records, operational indicators, maps, and visual analysis captured at the time of export.`;
+    description.textContent = `This is an official ${reportSource ? `report from ${reportSource}` : 'Rapid Response report'}, covering ${describeScope(fullPage, selected)} for ${describePeriod()}. It presents the available incident records, operational indicators, maps, and visual analysis captured at the time of export.`;
     const metadata = document.createElement('p');
     metadata.className = 'report-print-metadata';
     metadata.textContent = `Generated ${new Date().toLocaleString()}${dateField.value ? ` · Day filter: ${dateField.value}` : ''}`;
-    header.append(kicker, title, description, metadata);
+    header.append(kicker, source, title, description, metadata);
     surface.appendChild(header);
     if (fullPage) {
       const pageContent = cloneForPrint(main, dateField.value);
@@ -214,7 +225,7 @@
     }
     const footer = document.createElement('footer');
     footer.className = 'report-print-footer';
-    footer.textContent = 'Rapid Response · Internal operations report';
+    footer.textContent = reportSource ? `Rapid Response · ${reportSource} · Internal operations report` : 'Rapid Response · Internal operations report';
     surface.appendChild(footer);
     document.body.appendChild(surface);
     document.body.classList.add('is-printing-report');

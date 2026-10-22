@@ -1,0 +1,141 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Safety Alerts and Travel Watch</title>
+  <link rel="stylesheet" href="{% static 'css/site.css' %}?v=20261022-travel-map-v8">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+</head>
+<body class="page-subscriber-alerts">
+  <header class="public-motto-header"><span>Saving lives is better.</span></header>
+  <main class="subscriber-shell" data-subscriber-alerts
+        data-public-key="{{ webpush_public_key }}"
+        data-subscribe-url="{% url 'public_alert_subscribe' %}"
+        data-preferences-url="{% url 'public_alert_preferences' %}"
+        data-remove-area-url="{% url 'public_alert_remove_area' %}"
+        data-travel-url="{% url 'travel_alert_plan' %}"
+        data-travel-location-url="{% url 'travel_location_area' %}"
+        data-travel-stop-url="{% url 'travel_alert_stop' %}">
+    <a class="subscriber-back-link" href="{% url 'home' %}">← Back to emergency assistance</a>
+    <section class="subscriber-hero">
+      <p class="eyebrow">Community safety network</p>
+      <h1>Safety alerts and travel watch</h1>
+      <p>Choose the places you care about. If you travel, add your starting and destination districts so alerts can follow your estimated route corridor.</p>
+    </section>
+
+    <div class="subscriber-status" data-subscriber-status role="status" aria-live="polite">Allow browser notifications to receive urgent public safety messages.</div>
+
+    <div class="subscriber-card-row">
+    <section class="subscriber-card travel-card" aria-labelledby="travel-title">
+      <div class="subscriber-card-heading">
+        <div>
+          <p class="eyebrow">Travel emergency watch</p>
+          <h2 id="travel-title">Take alerts with you</h2>
+        </div>
+        <span class="subscriber-card-icon travel-icon" aria-hidden="true">↗</span>
+      </div>
+      <div class="travel-card-workspace">
+        <div class="travel-card-info">
+          <div class="travel-visual">
+            <img src="{% static 'pexels-viliamphotography-28966343.jpg' %}" alt="Traveller on a monitored route">
+            <div class="travel-visual-overlay">
+              <span class="travel-visual-kicker">Journey protection</span>
+              <strong>Know what is happening along the way.</strong>
+            </div>
+          </div>
+          <div class="travel-actions">
+            <button class="subscriber-gps-button" type="button" data-use-gps>Use GPS for live trip view</button>
+            <div class="travel-live-position" data-live-position hidden role="status" aria-live="polite"></div>
+          </div>
+          <p class="subscriber-help">Tap Use GPS to identify your starting district. When it is found, choose where you are travelling to and calculate the route distance.</p>
+          <form class="travel-form" data-travel-form>
+            {% csrf_token %}
+            <label><span>From</span><select name="origin_area" aria-label="Starting district" required><option value="">Choose starting district</option>{% for district in districts %}<option value="{{ district.pk }}">{{ district.name }}</option>{% endfor %}</select></label>
+            <label><span>To — where are you travelling?</span><select name="destination_area" aria-label="Destination district" required><option value="">Choose destination district</option>{% for district in districts %}<option value="{{ district.pk }}">{{ district.name }}</option>{% endfor %}</select></label>
+            <button class="subscriber-primary-button" type="submit">Calculate route &amp; distance</button>
+          </form>
+          <div class="travel-route-result" data-travel-route hidden></div>
+          <button class="subscriber-secondary-button" type="button" data-stop-travel hidden>Stop travel watch</button>
+          <p class="subscriber-route-note">Travel districts are temporary and do not change your saved stay districts. This is an estimated safety corridor, not turn-by-turn navigation; confirm your road route before travelling.</p>
+        </div>
+        <div class="travel-card-map">
+          <div class="travel-map-shell" data-travel-map-shell aria-labelledby="travel-map-title">
+            <div class="travel-map-heading">
+              <div>
+                <span class="travel-map-kicker">Live journey view</span>
+                <h3 id="travel-map-title">Your planned route</h3>
+              </div>
+              <div class="travel-map-heading-actions">
+                <span class="travel-map-state" data-map-route-state>Waiting for a route</span>
+                <button class="travel-map-fullscreen" type="button" data-map-fullscreen aria-pressed="false">Full map</button>
+              </div>
+            </div>
+            <div class="travel-map-route-labels" data-map-route-labels hidden>
+              <span><b>FROM</b><strong data-map-route-from>—</strong></span>
+              <i aria-hidden="true">→</i>
+              <span><b>TO</b><strong data-map-route-to>—</strong></span>
+            </div>
+            <div class="travel-route-metrics" data-map-route-metrics hidden>
+              <div><strong data-map-route-distance>—</strong><span data-map-route-distance-label>Road distance</span></div>
+              <div><strong data-map-route-time>—</strong><span>Estimated drive time</span></div>
+              <div><strong data-map-route-stops>—</strong><span>District corridor</span></div>
+              <div data-map-route-traffic hidden><strong data-map-route-traffic-value>—</strong><span>Live Google traffic</span></div>
+            </div>
+            <div class="travel-map-legend" aria-label="Map legend">
+              <span><i class="map-legend-dot start"></i>Start</span>
+              <span><i class="map-legend-line"></i>Journey route</span>
+              <span><i class="map-legend-dot destination"></i>Destination</span>
+              <span><i class="map-legend-dot current"></i>Your location</span>
+            </div>
+            <div class="travel-route-map" data-travel-route-map role="img" aria-label="Map showing the planned travel route"></div>
+            <p class="travel-map-caption">The highlighted line follows the available road route. When configured, Google Routes supplies traffic-aware drive time and congestion; otherwise the map uses an approximate fallback.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="subscriber-card subscriber-places-card" aria-labelledby="alert-places-title">
+      <div class="subscriber-card-heading">
+        <div>
+          <p class="eyebrow">Your notification places</p>
+          <h2 id="alert-places-title">Choose the districts you care about</h2>
+        </div>
+        <span class="subscriber-card-icon" aria-hidden="true">⌁</span>
+      </div>
+      <p class="subscriber-help">Search and tap districts for home, work, family, or any other place. Alerts contain public safety guidance only, never private case details.</p>
+      <div class="district-picker" data-district-picker>
+        <div class="district-picker-search">
+          <label class="district-search-wrap" for="district-search">
+            <span>Find a district</span>
+            <input id="district-search" type="search" data-area-search placeholder="Search by district or region" autocomplete="off">
+          </label>
+          <div class="district-picker-options" data-alert-area-list>
+            {% for district in districts %}
+              <button class="district-picker-option" type="button" data-alert-area-option data-area-id="{{ district.pk }}" data-area-name="{{ district.name }}" aria-pressed="false">
+                <span><strong>{{ district.name }}</strong><small>{% if district.region %}{{ district.region }}{% else %}Uganda{% endif %}</small></span>
+                <b aria-hidden="true">+</b>
+              </button>
+            {% endfor %}
+          </div>
+          <p class="district-picker-empty" data-area-empty hidden>No districts match that search.</p>
+        </div>
+        <div class="district-picker-subscribe">
+          <span class="district-picker-subscribe-kicker">Stay informed</span>
+          <strong>Get alerts for your places</strong>
+          <button class="subscriber-primary-button district-subscribe-button" type="button" data-save-areas>Subscribe to alerts</button>
+          <small>Browser permission is required.</small>
+        </div>
+        <div class="district-picker-selected" data-active-areas aria-live="polite">
+          <strong>Selected districts</strong>
+          <span class="subscriber-active-empty">No districts selected yet.</span>
+        </div>
+      </div>
+    </section>
+    </div>
+  </main>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script src="{% static 'js/subscriber-alerts.js' %}?v=20261022-travel-map-v8"></script>
+</body>
+</html>

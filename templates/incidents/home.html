@@ -9,7 +9,7 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Emergency Assistance</title>
-  <link rel="stylesheet" href="{% static 'css/site.css' %}?v=20261020"><link rel="stylesheet" href="{% static 'css/form-errors.css' %}?v=20261001"><link rel="stylesheet" href="{% static 'css/video-help.css' %}?v=20261001"><link rel="stylesheet" href="{% static 'css/professional.css' %}?v=20261001">
+  <link rel="stylesheet" href="{% static 'css/site.css' %}?v=20261022-public-shortcuts"><link rel="stylesheet" href="{% static 'css/public-alerts.css' %}?v=20261022-public-alerts"><link rel="stylesheet" href="{% static 'css/form-errors.css' %}?v=20261001"><link rel="stylesheet" href="{% static 'css/video-help.css' %}?v=20261001"><link rel="stylesheet" href="{% static 'css/professional.css' %}?v=20261001">
 </head>
 <body class="page-emergency">
 <header class="public-motto-header"><span>Saving lives is better.</span></header>
@@ -38,6 +38,18 @@
     <p class="intro">Send your location and details to the authorised response team nearest to you.</p>
   </div>
   <a class="quick-link" href="{% url 'quick_help' %}"><span class="quick-link-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 8.5 20 6v12l-5-2.5V19H4V5h11v3.5Z"></path><circle cx="9.5" cy="12" r="2.5"></circle></svg></span><span><strong>Quick video help</strong><small>Tap to record a video if you cannot type</small></span><span class="quick-link-action">Open</span></a>
+  <nav class="public-action-links" aria-label="Public safety services">
+    <a class="public-action-link public-action-link-travel" href="{% url 'subscriber_alerts' %}">
+      <span class="public-action-link-icon" aria-hidden="true">↗</span>
+      <span><strong>Travel / Get alerts</strong><small>Plan a journey or manage places</small></span>
+      <span class="public-action-link-arrow">Open</span>
+    </a>
+    <a class="public-action-link public-action-link-alerts" href="{% url 'public_alert_history' %}">
+      <span class="public-action-link-icon" aria-hidden="true">!</span>
+      <span><strong>Alerts</strong><small>Read recent public safety notices</small></span>
+      <span class="public-action-link-arrow">Open</span>
+    </a>
+  </nav>
   <!-- The form below captures the caller and incident information before saving. -->
   <form method="post" id="help-form">{% csrf_token %}{{ form.idempotency_key }}
     {% if form.errors %}<div class="error"><strong>We could not send the request yet.</strong><span>Please correct the following:</span><ul>{% for field, errors in form.errors.items %}<li>{% if field != '__all__' %}{{ field|title }}: {% endif %}{{ errors|striptags }}</li>{% endfor %}</ul></div>{% endif %}

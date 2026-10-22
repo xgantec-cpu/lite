@@ -6,22 +6,28 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Referred case map · {{ profile.institution_name }}</title>
   <link rel="stylesheet" href="{% static 'css/institution.css' %}?v=20261010">
+  <link rel="stylesheet" href="{% static 'css/institution-dark.css' %}?v=20261022-portal-ui">
+  <link rel="stylesheet" href="{% static 'css/dashboard/report-builder.css' %}?v=20261022-portal-ui">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 </head>
-<body class="institution-page" data-session-lock-url="{% url 'institution_logout' %}">
+<body class="institution-page" data-session-lock-url="{% url 'institution_logout' %}" data-session-keepalive-url="{% url 'workspace_keepalive' %}">
   <header class="institution-topbar">
     <a class="institution-brand" href="{% url 'institution_portal' %}"><img class="institution-brand-logo" src="{% static 'Rapid Response Emergency Logo.png' %}" alt="" width="40" height="40"><span class="institution-brand-name">Rapid<span>Response</span></span></a>
     <div class="institution-identity"><strong class="institution-identity-name">{{ profile.institution_name }}</strong><small>{{ profile.get_institution_type_display }} · {{ profile.area.name }}</small></div>
-    <a class="institution-signout" href="{% url 'institution_logout' %}">Sign out</a>
+    <div class="institution-topbar-actions">
+      <button class="theme-toggle institution-theme-toggle" data-theme-toggle type="button" aria-label="Toggle dark mode" aria-pressed="false"><span class="theme-toggle-icon institution-theme-toggle-icon" aria-hidden="true">☾</span><span class="theme-toggle-label institution-theme-toggle-label">Dark mode</span></button>
+      <button class="report-open-button institution-report-open" data-report-open type="button" aria-haspopup="dialog"><span aria-hidden="true">▤</span><span>Print report</span></button>
+      <a class="institution-signout" href="{% url 'institution_logout' %}">Sign out</a>
+    </div>
   </header>
-  <main class="institution-shell">
+  <main class="institution-shell" data-report-root>
     <a class="institution-back-link" href="{% url 'institution_portal' %}">Back to cases</a>
-    <div class="institution-heading institution-map-heading">
+    <div class="institution-heading institution-map-heading" data-report-section data-report-label="Map summary">
       <div><p class="institution-kicker">Secure geospatial view</p><h1>Referred case map</h1><p>{% if selected_case %}Tracking {{ selected_case.reference }} and your other referred cases.{% else %}View the cases sent to this institution on one map.{% endif %}</p></div>
       <div class="institution-map-summary"><strong>{{ sent_case_count }}</strong><span>sent cases</span><small>{{ mapped_case_count }} mapped</small></div>
     </div>
-    <section class="institution-map-panel">
+    <section class="institution-map-panel" data-report-section data-report-label="Referred case map">
       <div class="institution-map-panel-heading"><div><p class="institution-kicker">Response locations</p><h2>{% if selected_case %}Selected case location{% else %}All referred cases{% endif %}</h2></div><button class="institution-map-fit" data-institution-map-fit type="button">Fit all cases</button></div>
       <div class="institution-global-map-wrap"><div id="institution-global-case-map" data-institution-location-url="{{ tracking_endpoint }}"></div>{% if not map_points %}<div class="institution-map-empty"><strong>No mapped referred cases</strong><span>Cases without GPS coordinates remain available in your case list.</span></div>{% endif %}</div>
     </section>
@@ -34,11 +40,9 @@
     const institutionMap = L.map('institution-global-case-map', {zoomControl: false, preferCanvas: true}).setView([1, 32], 7);
     const institutionStreetLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 19, attribution: '&copy; OpenStreetMap contributors'});
     const institutionSatelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {maxZoom: 19, attribution: '&copy; Esri, Maxar, Earthstar Geographics'});
-    const institutionStreetNamesLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}', {maxZoom: 19, opacity: .9, attribution: '&copy; Esri'});
     institutionSatelliteLayer.addTo(institutionMap);
-    institutionStreetNamesLayer.addTo(institutionMap);
     L.control.zoom({position: 'bottomright'}).addTo(institutionMap);
-    L.control.layers({'Street map': institutionStreetLayer, 'Satellite': institutionSatelliteLayer}, {'Street names': institutionStreetNamesLayer}, {position: 'topright', collapsed: false}).addTo(institutionMap);
+    L.control.layers({'Street map': institutionStreetLayer, 'Satellite': institutionSatelliteLayer}, {}, {position: 'topright', collapsed: false}).addTo(institutionMap);
 
     L.geoJSON(institutionMapBoundaries, {style: {color: '#195c83', weight: 2, opacity: .85, fillColor: '#4ba3c7', fillOpacity: .12}}).addTo(institutionMap);
     const institutionBounds = institutionMapPoints.length ? L.latLngBounds(institutionMapPoints.map((point) => [point.lat, point.lng])) : null;
@@ -91,6 +95,9 @@
     }
     window.setTimeout(() => institutionMap.invalidateSize(), 250);
   </script>
-  <script src="{% static 'js/session-activity.js' %}?v=20261002"></script>
+  {% include "institution/report_dialog.html" %}
+  <script src="{% static 'js/session-activity.js' %}?v=20261022-session-keepalive"></script>
+  <script src="{% static 'js/theme-toggle.js' %}?v=20261022-portal-ui"></script>
+  <script src="{% static 'js/report-builder.js' %}?v=20261022-portal-ui"></script>
 </body>
 </html>

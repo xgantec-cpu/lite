@@ -466,6 +466,25 @@
   background: #e2f3ef;
 }
 
+.emergency-chat-message.system {
+  width: min(94%, 560px);
+  max-width: 94%;
+  align-self: center;
+  border: 1px solid #b9dff0;
+  border-radius: 12px;
+  background: #eef9fe;
+  box-shadow: 0 3px 10px rgba(23, 126, 169, 0.08);
+}
+
+.emergency-chat-message.system small {
+  color: #14769e;
+  font-weight: 800;
+}
+
+.emergency-chat-message.system p {
+  color: #174e68;
+}
+
 .emergency-chat-message small {
   display: block;
   margin-bottom: 4px;

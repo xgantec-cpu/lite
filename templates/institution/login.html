@@ -5,6 +5,7 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Institution sign in · Rapid Response</title>
   <link rel="stylesheet" href="{% static 'css/institution.css' %}?v=20261008">
+  <link rel="stylesheet" href="{% static 'css/institution-dark.css' %}?v=20261022-portal-ui">
 </head>
 <body class="institution-login-page">
   <main class="institution-login-shell">
@@ -12,6 +13,7 @@
       <div class="institution-login-visual-copy"><span>Rapid Response</span><strong>One network.<br>Every response.</strong><small>Secure receiving portals for hospitals and police stations.</small></div>
     </section>
     <section class="institution-login-card">
+    <button class="theme-toggle institution-theme-toggle institution-login-theme-toggle" data-theme-toggle type="button" aria-label="Toggle dark mode" aria-pressed="false"><span class="theme-toggle-icon institution-theme-toggle-icon" aria-hidden="true">☾</span><span class="theme-toggle-label institution-theme-toggle-label">Dark mode</span></button>
     <img class="institution-login-logo" src="{% static 'Rapid Response Emergency Logo.png' %}" alt="Rapid Response Emergency">
     <p class="institution-kicker">Secure receiving portal</p>
     <h1>Institution sign in</h1>
@@ -43,6 +45,8 @@
     const institutionType = document.getElementById('institution-type');
     const hospitalFields = document.getElementById('hospital-login-fields');
     const policeFields = document.getElementById('police-login-fields');
+    let directoryRequest;
+    let directoryRequestId = 0;
     function updatePortalType() {
       const isHospital = institutionType.value === 'hospital';
       hospitalFields.hidden = !isHospital;
@@ -52,20 +56,46 @@
       document.getElementById('username').required = false;
       const selectedDistrict = district.options[district.selectedIndex];
       document.getElementById('username').value = selectedDistrict ? selectedDistrict.text : '';
+      if (isHospital) loadHospitals();
+      else {
+        directoryRequest?.abort();
+        hospital.replaceChildren(new Option('Choose a district first', ''));
+      }
     }
     async function loadHospitals() {
-      if (!district.value) { hospital.innerHTML = '<option value="">Choose a district first</option>'; return; }
+      const requestId = ++directoryRequestId;
+      directoryRequest?.abort();
+      if (!district.value || institutionType.value !== 'hospital') {
+        hospital.replaceChildren(new Option('Choose a district first', ''));
+        return;
+      }
+      directoryRequest = new AbortController();
+      hospital.replaceChildren(new Option('Loading hospitals…', ''));
       try {
-        const response = await fetch('{% url "institution_hospital_directory" %}?district=' + encodeURIComponent(district.value) + '&q=' + encodeURIComponent(search.value));
+        const response = await fetch('{% url "institution_hospital_directory" %}?district=' + encodeURIComponent(district.value) + '&q=' + encodeURIComponent(search.value), {signal: directoryRequest.signal, credentials: 'same-origin'});
         if (!response.ok) throw new Error('directory unavailable');
         const data = await response.json();
-        hospital.innerHTML = data.results.length ? '<option value="">Choose a hospital</option>' + data.results.map((item) => '<option value="' + item.value + '">' + item.label + ' · ' + (item.level || 'Hospital') + ' · ' + item.ownership + '</option>').join('') : '<option value="">No hospitals registered in this district</option>';
-      } catch (error) { hospital.innerHTML = '<option value="">Hospital directory unavailable</option>'; }
+        if (requestId !== directoryRequestId) return;
+        hospital.replaceChildren();
+        if (!data.results?.length) {
+          hospital.appendChild(new Option('No hospitals registered in this district', ''));
+          return;
+        }
+        hospital.appendChild(new Option('Choose a hospital', ''));
+        data.results.forEach((item) => {
+          const details = [item.level || 'Hospital', item.ownership].filter(Boolean).join(' · ');
+          hospital.appendChild(new Option(`${item.label}${details ? ` · ${details}` : ''}`, item.value));
+        });
+      } catch (error) {
+        if (error.name === 'AbortError' || requestId !== directoryRequestId) return;
+        hospital.replaceChildren(new Option('Hospital directory unavailable — try again', ''));
+      }
     }
     district.addEventListener('change', loadHospitals);
     search.addEventListener('input', loadHospitals);
     institutionType.addEventListener('change', updatePortalType);
     updatePortalType();
   </script>
+  <script src="{% static 'js/theme-toggle.js' %}?v=20261022-portal-ui"></script>
 </body>
 </html>

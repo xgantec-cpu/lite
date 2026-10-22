@@ -13,36 +13,61 @@
   <div class="global-map-summary"><strong>{{ handled_case_count }}</strong><span>cases to handle</span><small>{{ mapped_case_count }} mapped</small></div>
 </div>
 
-<section class="global-map-panel">
-  <div class="panel-heading">
-    <div>
-      <h2>Response network map</h2>
-    <p>{% if selected_case %}The selected case is highlighted and opened at its latest reported coordinates.{% else %}Tap any marker to open the full emergency report.{% endif %}</p>
+<div class="global-map-workspace">
+  <section class="global-map-panel">
+    <div class="panel-heading">
+      <div>
+        <h2>Response network map</h2>
+        <p>{% if selected_case %}The selected case is highlighted and opened at its latest reported coordinates.{% else %}Tap any marker to open the full emergency report.{% endif %}</p>
+      </div>
+      <div class="map-panel-actions">
+        <span class="map-key"><i class="map-key-dot"></i>Active case</span>
+        <button class="map-global-fit" data-global-map-fit type="button">Fit all cases</button>
+      </div>
     </div>
-    <div class="map-panel-actions">
-      <span class="map-key"><i class="map-key-dot"></i>Active case</span>
-      <button class="map-global-fit" data-global-map-fit type="button">Fit all cases</button>
+    <div class="global-map-wrap">
+      <div id="global-case-map" data-global-location-url="{{ tracking_endpoint }}"></div>
+      {% if not map_points %}<div class="map-empty"><strong>No mapped cases</strong><span>Active cases without GPS coordinates remain available in Incoming incidents.</span></div>{% endif %}
     </div>
-  </div>
-  <div class="global-map-wrap">
-    <div id="global-case-map" data-global-location-url="{{ tracking_endpoint }}"></div>
-    {% if not map_points %}<div class="map-empty"><strong>No mapped cases</strong><span>Active cases without GPS coordinates remain available in Incoming incidents.</span></div>{% endif %}
-  </div>
-</section>
+  </section>
+
+  <aside class="global-alert-panel" aria-labelledby="area-alert-title">
+    <div class="global-alert-panel-heading">
+      <span class="global-alert-kicker">Community safety channel</span>
+      <h2 id="area-alert-title">Send an area alert</h2>
+      <p>Share a calm, public-safe message with people who opted in to alerts for a district.</p>
+      {% if not webpush_configured %}<div class="global-alert-config-warning">Delivery is not active yet. Add the Web Push environment keys before sending.</div>{% endif %}
+    </div>
+    <div class="global-alert-rule"><span>Sending guide</span><strong>Send when your team verifies a public need</strong></div>
+    <form method="post" class="global-alert-form">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="send_area_alert">
+      <label><span>Marked district</span><select name="alert_area" data-alert-area-select required><option value="">Choose a district</option>{% for metric in alert_metrics %}<option value="{{ metric.id }}">{{ metric.name }} · {{ metric.count }} active</option>{% endfor %}</select></label>
+      <label><span>Issue group</span><select name="alert_issue_type" data-alert-issue-select><option value="all">All active issues</option>{% for value, label in emergency_types %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select></label>
+      <label><span>Public headline</span><input name="alert_title" type="text" maxlength="120" placeholder="Safety information for this district" required></label>
+      <label><span>Public message</span><textarea name="alert_body" maxlength="600" rows="4" placeholder="Explain what residents should know or do. Do not include names, phone numbers, or exact case locations." required></textarea></label>
+      <div class="global-alert-readiness" data-alert-readiness role="status" aria-live="polite">Choose a district to check its active case volume.</div>
+      <button class="global-alert-submit" type="submit">Send public area alert <span aria-hidden="true">→</span></button>
+    </form>
+    <div class="global-alert-history">
+      <div class="global-alert-history-heading"><strong>Recent alerts</strong><span>Audit trail</span></div>
+      {% if alert_history %}<ul>{% for alert in alert_history %}<li><span><strong>{{ alert.area.name }}</strong><small>{{ alert.created_at|date:"d M Y, H:i" }} · {{ alert.case_count_snapshot }} matching cases</small></span><b class="alert-status-{{ alert.delivery_status }}">{{ alert.get_delivery_status_display }}</b></li>{% endfor %}</ul>{% else %}<p>No area alerts have been sent yet.</p>{% endif %}
+    </div>
+  </aside>
+</div>
 
 {{ map_points|json_script:"global-map-points" }}
 {{ boundary_geojson|json_script:"global-map-boundaries" }}
+{{ alert_metrics|json_script:"global-alert-metrics" }}
 <script>
   const globalMapPoints = JSON.parse(document.getElementById('global-map-points').textContent);
   const globalMapBoundaries = JSON.parse(document.getElementById('global-map-boundaries').textContent);
   const globalMap = L.map('global-case-map', {zoomControl: false, preferCanvas: true}).setView([10, 20], 2);
   const globalStreetLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 19, attribution: '&copy; OpenStreetMap contributors'});
   const globalSatelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {maxZoom: 19, attribution: '&copy; Esri, Maxar, Earthstar Geographics'});
-  const globalStreetNamesLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}', {maxZoom: 19, opacity: .9, attribution: '&copy; Esri'});
   globalSatelliteLayer.addTo(globalMap);
-  globalStreetNamesLayer.addTo(globalMap);
   L.control.zoom({position: 'bottomright'}).addTo(globalMap);
-  L.control.layers({'Street map': globalStreetLayer, 'Satellite': globalSatelliteLayer}, {'Street names': globalStreetNamesLayer}, {position: 'topright', collapsed: false}).addTo(globalMap);
+  L.control.layers({'Street map': globalStreetLayer, 'Satellite': globalSatelliteLayer}, {}, {position: 'topright', collapsed: false}).addTo(globalMap);
 
   const globalIncidentCounts = globalMapPoints.reduce((counts, point) => {
     counts[point.area] = (counts[point.area] || 0) + 1;
@@ -119,5 +144,28 @@
     window.setTimeout(fitGlobalCases, 800);
   }
   window.setTimeout(() => globalMap.invalidateSize(), 250);
+
+  const globalAlertMetrics = JSON.parse(document.getElementById('global-alert-metrics').textContent);
+  const alertAreaSelect = document.querySelector('[data-alert-area-select]');
+  const alertIssueSelect = document.querySelector('[data-alert-issue-select]');
+  const alertReadiness = document.querySelector('[data-alert-readiness]');
+  const updateAlertReadiness = () => {
+    const metric = globalAlertMetrics.find((item) => String(item.id) === alertAreaSelect.value);
+    if (!metric) {
+      alertReadiness.textContent = 'Choose a district to check its active case volume.';
+      alertReadiness.dataset.state = '';
+      return;
+    }
+    const issue = alertIssueSelect.value;
+    const count = issue === 'all'
+      ? metric.count
+      : ((metric.issues.find((item) => item.value === issue) || {}).count || 0);
+    alertReadiness.textContent = `${metric.name}: ${count} matching active case${count === 1 ? '' : 's'}. You can send a verified public notice now.`;
+    alertReadiness.dataset.state = 'ready';
+  };
+  if (alertAreaSelect && alertIssueSelect && alertReadiness) {
+    alertAreaSelect.addEventListener('change', updateAlertReadiness);
+    alertIssueSelect.addEventListener('change', updateAlertReadiness);
+  }
 </script>
 {% endblock %}

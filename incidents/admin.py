@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django import forms
 
-from .models import CallRequest, CaseMessage, EmergencyChatCall, EmergencyChatMessage, EmergencyChatRoom, EmergencyRequest, HospitalFacility, Incident, IncidentFavorite, IncidentNote, InHouseConversation, InHouseMessage, InstitutionProfile, LocationArea, LocationPing, MFAProfile, OperationsAccess, Recording, Referral, ResponseProfile, SecurityEvent
+from .models import AreaAlert, CallRequest, CaseMessage, EmergencyChatCall, EmergencyChatMessage, EmergencyChatRoom, EmergencyRequest, HospitalFacility, Incident, IncidentFavorite, IncidentNote, InHouseConversation, InHouseMessage, InstitutionProfile, LocationArea, LocationPing, MFAProfile, OperationsAccess, PublicAlertSubscription, Recording, Referral, ResponseProfile, SecurityEvent, TravelSafetyPlan
 
 
 class ResponseProfileAdminForm(forms.ModelForm):
@@ -369,3 +369,49 @@ class EmergencyChatCallAdmin(admin.ModelAdmin):
     list_filter = ("status", "requester_type", "created_at")
     search_fields = ("room__incident__request__request_id", "recipient__username")
     readonly_fields = ("created_at", "responded_at")
+
+
+@admin.register(AreaAlert)
+class AreaAlertAdmin(admin.ModelAdmin):
+    list_display = ("created_at", "area", "title", "case_count_snapshot", "delivery_status", "recipient_count", "failed_count")
+    list_filter = ("area", "delivery_status", "created_at")
+    search_fields = ("area__name", "title")
+    readonly_fields = (
+        "area", "created_by", "title", "body", "issue_type", "case_count_snapshot", "delivery_status",
+        "recipient_count", "failed_count", "idempotency_key", "sent_at", "created_at",
+    )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(PublicAlertSubscription)
+class PublicAlertSubscriptionAdmin(admin.ModelAdmin):
+    list_display = ("area", "receives_area_alerts", "active", "client_uuid", "last_seen_at", "created_at")
+    list_filter = ("area", "receives_area_alerts", "active", "created_at")
+    search_fields = ("area__name", "endpoint_hash", "client_uuid")
+    readonly_fields = ("area", "receives_area_alerts", "endpoint_hash", "client_uuid", "user_agent", "active", "last_seen_at", "created_at")
+    exclude = ("endpoint", "p256dh", "auth")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(TravelSafetyPlan)
+class TravelSafetyPlanAdmin(admin.ModelAdmin):
+    list_display = ("origin_area", "destination_area", "subscription", "active", "updated_at")
+    list_filter = ("active", "origin_area", "destination_area")
+    search_fields = ("origin_area__name", "destination_area__name", "subscription__endpoint_hash")
+    readonly_fields = ("subscription", "client_uuid", "origin_area", "destination_area", "created_at", "updated_at")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False

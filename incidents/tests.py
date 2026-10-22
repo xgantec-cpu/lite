@@ -1,7 +1,10 @@
 from datetime import timedelta
 import asyncio
+import hashlib
+import json
 import time
 import uuid
+from unittest.mock import patch
 from urllib.parse import quote
 
 from channels.testing import WebsocketCommunicator
@@ -12,7 +15,7 @@ from django.contrib.auth import get_user_model
 from django.db import connection
 from django.utils import timezone
 
-from .models import CaseMessage, EmergencyChatCall, EmergencyChatRoom, EmergencyRequest, HospitalFacility, Incident, IncidentFavorite, IncidentNote, InHouseConversation, InHouseMessage, InstitutionProfile, LocationArea, LocationPing, MFAProfile, OperationsAccess, Recording, Referral, ReferralDestination, ResponseProfile, SecurityEvent
+from .models import AreaAlert, CaseMessage, EmergencyChatCall, EmergencyChatMessage, EmergencyChatRoom, EmergencyRequest, HospitalFacility, Incident, IncidentFavorite, IncidentNote, InHouseConversation, InHouseMessage, InstitutionProfile, LocationArea, LocationPing, MFAProfile, OperationsAccess, PublicAlertSubscription, Recording, Referral, ReferralDestination, ResponseProfile, SecurityEvent, TravelSafetyPlan
 from .device_detection import detect_device
 from .mfa import totp_code
 from .realtime import async_broadcast_emergency_chat_update
@@ -29,6 +32,9 @@ class EmergencyRequestFlowTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "SEEK HELP")
         self.assertContains(response, "Quick video help")
+        self.assertContains(response, "Travel / Get alerts")
+        self.assertContains(response, "Alerts")
+        self.assertNotContains(response, "Optional community safety alerts")
         self.assertContains(response, "Allow location")
         self.assertContains(response, "id_client_uuid")
 
@@ -348,8 +354,28 @@ class EmergencyRequestFlowTests(TestCase):
         self.assertTrue(accepted.json()["accepted"])
         sent = self.client.post(chat_url, {"action": "message", "body": "I am safe for now."})
         self.assertEqual(sent.status_code, 200)
-        self.assertEqual(sent.json()["messages"][0]["body"], "I am safe for now.")
-        self.assertEqual(sent.json()["messages"][0]["channel"], "text")
+        user_messages = [message for message in sent.json()["messages"] if message["sender_type"] == "public"]
+        self.assertEqual(user_messages[0]["body"], "I am safe for now.")
+        self.assertEqual(user_messages[0]["channel"], "text")
+
+    def test_opening_public_chat_seeds_automated_greeting_and_follow_up(self):
+        self.client.post(reverse("home"), {
+            "phone_number": "+256700000000",
+            "area_name": "Masaka",
+            "emergency_type": "danger",
+            "priority": "high",
+            "location_source": "user",
+        })
+        incident = EmergencyRequest.objects.get().incident
+        response = self.client.get(reverse("emergency_chat_page", args=[incident.pk]))
+        self.assertEqual(response.status_code, 200)
+        messages = EmergencyChatMessage.objects.filter(room__incident=incident, sender_type="system")
+        self.assertEqual(messages.count(), 2)
+        bodies = list(messages.values_list("body", flat=True))
+        self.assertTrue(any(body.startswith("Hello. You are now connected") for body in bodies))
+        self.assertTrue(any("confirmed GPS position" in body for body in bodies))
+        self.client.get(reverse("emergency_chat_page", args=[incident.pk]))
+        self.assertEqual(messages.count(), 2)
 
     def test_public_chat_link_survives_stale_workspace_activity(self):
         self.client.post(reverse("home"), {
@@ -391,7 +417,7 @@ class EmergencyRequestFlowTests(TestCase):
         }
         self.client.post(chat_url, payload)
         self.client.post(chat_url, payload)
-        self.assertEqual(EmergencyChatRoom.objects.get(incident=incident).messages.count(), 1)
+        self.assertEqual(EmergencyChatRoom.objects.get(incident=incident).messages.filter(sender_type="public").count(), 1)
 
     def test_authenticated_user_without_assignment_cannot_open_emergency_chat(self):
         self.client.post(reverse("home"), {
@@ -1111,6 +1137,252 @@ class ResponderDashboardTests(TestCase):
         selected_points = [point for point in response.context["map_points"] if point["selected"]]
         self.assertEqual([point["id"] for point in selected_points], [self.incident.pk])
 
+    def test_global_map_shows_the_area_alert_composer(self):
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("dashboard_global_map"))
+        self.assertContains(response, "Send an area alert")
+        self.assertContains(response, "Send when your team verifies a public need")
+        self.assertContains(response, "Do not include names, phone numbers, or exact case locations.")
+
+    @override_settings(WEBPUSH_VAPID_PUBLIC_KEY="", WEBPUSH_VAPID_PRIVATE_KEY="", WEBPUSH_VAPID_SUBJECT="")
+    def test_public_area_alert_can_be_sent_for_an_early_security_warning(self):
+        self.client.force_login(self.user)
+        response = self.client.post(reverse("dashboard_global_map"), {
+            "action": "send_area_alert",
+            "alert_area": self.masaka.pk,
+            "alert_issue_type": "security",
+            "alert_title": "Security information",
+            "alert_body": "Please use well-lit routes and contact the response desk if you need assistance.",
+        }, follow=True)
+        self.assertEqual(response.status_code, 200)
+        alert = AreaAlert.objects.get()
+        self.assertEqual(alert.area, self.masaka)
+        self.assertEqual(alert.case_count_snapshot, 1)
+        self.assertEqual(alert.delivery_status, "not_configured")
+        self.assertContains(response, "Web Push is not configured yet")
+
+    def test_public_alert_detail_page_shows_safe_notification_content(self):
+        alert = AreaAlert.objects.create(
+            area=self.masaka,
+            created_by=self.user,
+            title="Road safety information",
+            body="Please use the marked route and follow official guidance.",
+            issue_type="security",
+            idempotency_key="public-alert-detail-test",
+        )
+        response = self.client.get(reverse("public_area_alert_detail", args=[alert.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Road safety information")
+        self.assertContains(response, "Please use the marked route")
+        self.assertContains(response, "Masaka")
+
+    def test_public_alert_history_page_shows_recent_delivered_notifications(self):
+        AreaAlert.objects.create(
+            area=self.masaka,
+            created_by=self.user,
+            title="Active road safety notice",
+            body="Please use the marked route and follow official guidance.",
+            delivery_status="sent",
+            idempotency_key="public-alert-history-sent-test",
+        )
+        AreaAlert.objects.create(
+            area=self.masaka,
+            created_by=self.user,
+            title="Undelivered internal notice",
+            body="This notice was not delivered to subscribed browsers.",
+            delivery_status="failed",
+            idempotency_key="public-alert-history-failed-test",
+        )
+        response = self.client.get(reverse("public_alert_history"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Sent public notifications")
+        self.assertContains(response, "Active road safety notice")
+        self.assertContains(response, "Masaka")
+        self.assertNotContains(response, "Undelivered internal notice")
+
+    def test_travel_location_area_resolves_gps_to_the_starting_district(self):
+        response = self.client.post(
+            reverse("travel_location_area"),
+            data=json.dumps({"latitude": -0.340000, "longitude": 31.733300}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["area"]["name"], "Masaka")
+        self.assertIn("destination", response.json()["message"].lower())
+
+    def test_expired_public_alert_detail_redirects_without_exposing_notice(self):
+        alert = AreaAlert.objects.create(
+            area=self.masaka,
+            created_by=self.user,
+            title="Expired road notice",
+            body="This message is no longer current.",
+            idempotency_key="expired-public-alert-test",
+        )
+        AreaAlert.objects.filter(pk=alert.pk).update(created_at=timezone.now() - timedelta(hours=5))
+        response = self.client.get(reverse("public_area_alert_detail", args=[alert.pk]))
+        self.assertRedirects(response, reverse("subscriber_alerts"))
+
+    def test_public_alert_subscription_is_saved_for_one_district(self):
+        response = self.client.post(
+            reverse("public_alert_subscribe"),
+            data=json.dumps({
+                "area_id": self.masaka.pk,
+                "endpoint": "https://push.example.test/subscription-1",
+                "keys": {"p256dh": "public-key", "auth": "auth-key"},
+            }),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        subscription = PublicAlertSubscription.objects.get()
+        self.assertEqual(subscription.area, self.masaka)
+        self.assertTrue(subscription.active)
+        self.assertEqual(subscription.endpoint, "https://push.example.test/subscription-1")
+
+    def test_subscriber_page_saves_multiple_places_and_travel_watch(self):
+        response = self.client.get(reverse("subscriber_alerts"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Safety alerts and travel watch")
+        self.assertContains(response, "Use GPS for live trip view")
+        self.assertContains(response, "Find a district")
+        endpoint = "https://push.example.test/travel-subscription"
+        subscription_payload = {
+            "endpoint": endpoint,
+            "keys": {"p256dh": "public-key", "auth": "auth-key"},
+            "area_ids": [self.masaka.pk, self.kampala.pk],
+        }
+        response = self.client.post(
+            reverse("public_alert_subscribe"),
+            data=json.dumps(subscription_payload),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        subscription = PublicAlertSubscription.objects.get(endpoint_hash=hashlib.sha256(endpoint.encode()).hexdigest())
+        self.assertEqual(set(subscription.notification_areas.values_list("pk", flat=True)), {self.masaka.pk, self.kampala.pk})
+        response = self.client.post(
+            reverse("travel_alert_plan"),
+            data=json.dumps({
+                **subscription_payload,
+                "origin_area": self.masaka.pk,
+                "destination_area": self.kampala.pk,
+            }),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertGreaterEqual(len(response.json()["route_map"]["features"]), 2)
+        plan = TravelSafetyPlan.objects.get(subscription=subscription, active=True)
+        self.assertEqual(plan.origin_area, self.masaka)
+        self.assertEqual(plan.destination_area, self.kampala)
+        self.assertTrue(plan.route_areas.filter(pk=self.masaka.pk).exists())
+        self.assertTrue(plan.route_areas.filter(pk=self.kampala.pk).exists())
+
+        travel_only_endpoint = "https://push.example.test/travel-only"
+        response = self.client.post(
+            reverse("travel_alert_plan"),
+            data=json.dumps({
+                "endpoint": travel_only_endpoint,
+                "keys": {"p256dh": "travel-public-key", "auth": "travel-auth-key"},
+                "origin_area": self.masaka.pk,
+                "destination_area": self.kampala.pk,
+                "area_ids": [],
+            }),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        travel_only = PublicAlertSubscription.objects.get(endpoint_hash=hashlib.sha256(travel_only_endpoint.encode()).hexdigest())
+        self.assertFalse(travel_only.receives_area_alerts)
+        response = self.client.post(
+            reverse("travel_alert_stop"),
+            data=json.dumps({"endpoint": travel_only_endpoint}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(TravelSafetyPlan.objects.get(subscription=travel_only).active)
+
+    @override_settings(GOOGLE_MAPS_API_KEY="test-google-server-key")
+    def test_travel_watch_uses_google_traffic_when_configured(self):
+        endpoint = "https://push.example.test/google-traffic"
+        google_response = {
+            "routes": [{
+                "distanceMeters": 120000,
+                "duration": "7200s",
+                "staticDuration": "5400s",
+                "polyline": {"encodedPolyline": "_p~iF~ps|U_ulLnnqC_mqNvxq`@"},
+            }],
+        }
+        with patch("incidents.views.urlopen") as mocked_urlopen:
+            response = mocked_urlopen.return_value.__enter__.return_value
+            response.read.return_value = json.dumps(google_response).encode("utf-8")
+            result = self.client.post(
+                reverse("travel_alert_plan"),
+                data=json.dumps({
+                    "endpoint": endpoint,
+                    "keys": {"p256dh": "public-key", "auth": "auth-key"},
+                    "origin_area": self.masaka.pk,
+                    "destination_area": self.kampala.pk,
+                    "start_latitude": "-0.3400",
+                    "start_longitude": "31.7333",
+                    "area_ids": [],
+                }),
+                content_type="application/json",
+            )
+
+        self.assertEqual(result.status_code, 200)
+        traffic = result.json()["google_traffic"]
+        self.assertEqual(result.json()["traffic_provider"], "Google")
+        self.assertTrue(result.json()["traffic_available"])
+        self.assertEqual(traffic["traffic_level"], "Heavy")
+        self.assertEqual(traffic["traffic_delay_seconds"], 1800)
+        self.assertGreater(len(traffic["road_points"]), 1)
+        mocked_urlopen.assert_called_once()
+
+    def test_travel_route_can_be_calculated_without_browser_alert_subscription(self):
+        response = self.client.post(
+            reverse("travel_alert_plan"),
+            data=json.dumps({
+                "origin_area": self.masaka.pk,
+                "destination_area": self.kampala.pk,
+            }),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()["watch_active"])
+        self.assertIsNone(response.json()["plan_id"])
+        self.assertIn("Route calculated", response.json()["message"])
+        self.assertFalse(TravelSafetyPlan.objects.exists())
+
+    def test_travel_corridor_does_not_become_a_saved_notification_place(self):
+        endpoint = "https://push.example.test/travel-corridor-only"
+        subscription_payload = {
+            "endpoint": endpoint,
+            "keys": {"p256dh": "public-key", "auth": "auth-key"},
+            "area_ids": [self.masaka.pk],
+        }
+        response = self.client.post(
+            reverse("public_alert_subscribe"),
+            data=json.dumps(subscription_payload),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        response = self.client.post(
+            reverse("travel_alert_plan"),
+            data=json.dumps({
+                **subscription_payload,
+                "origin_area": self.masaka.pk,
+                "destination_area": self.kampala.pk,
+            }),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        subscription = PublicAlertSubscription.objects.get(endpoint_hash=hashlib.sha256(endpoint.encode()).hexdigest())
+        self.assertEqual(set(subscription.notification_areas.values_list("pk", flat=True)), {self.masaka.pk})
+        self.assertTrue(TravelSafetyPlan.objects.get(subscription=subscription).route_areas.filter(pk=self.kampala.pk).exists())
+        response = self.client.post(
+            reverse("public_alert_preferences"),
+            data=json.dumps({"endpoint": endpoint}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.json()["areas"], [self.masaka.pk])
+
     def test_inhouse_chat_uses_district_codes_and_delivers_messages(self):
         user_model = get_user_model()
         kampala_admin = user_model.objects.create_user(username="kampala-admin", password="secret-pass")
@@ -1337,4 +1609,4 @@ class ChannelsWebsocketTests(TransactionTestCase):
             "idempotency_key": "websocket-message-001",
         })
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(room.messages.count(), 1)
+        self.assertEqual(room.messages.filter(sender_type="public").count(), 1)

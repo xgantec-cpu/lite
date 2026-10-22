@@ -1298,6 +1298,93 @@ body.page-operations {
   text-align: right;
 }
 
+.overview-grid .stat-card.metric-red {
+  --stat-accent: #d2384b;
+  --stat-accent-soft: rgba(210, 56, 75, 0.14);
+  --stat-glow: rgba(210, 56, 75, 0.15);
+  border-color: rgba(210, 56, 75, 0.3);
+}
+
+.overview-grid .stat-card.metric-orange {
+  --stat-accent: #e08222;
+  --stat-accent-soft: rgba(224, 130, 34, 0.15);
+  --stat-glow: rgba(224, 130, 34, 0.15);
+  border-color: rgba(224, 130, 34, 0.3);
+}
+
+.overview-grid .stat-card.metric-sky {
+  --stat-accent: #159bd3;
+  --stat-accent-soft: rgba(21, 155, 211, 0.15);
+  --stat-glow: rgba(21, 155, 211, 0.15);
+  border-color: rgba(21, 155, 211, 0.3);
+}
+
+.overview-grid .stat-card.metric-green {
+  --stat-accent: #168a66;
+  --stat-accent-soft: rgba(22, 138, 102, 0.15);
+  --stat-glow: rgba(22, 138, 102, 0.15);
+  border-color: rgba(22, 138, 102, 0.3);
+}
+
+.overview-grid .stat-card.metric-red .stat-icon,
+.overview-grid .stat-card.metric-orange .stat-icon,
+.overview-grid .stat-card.metric-sky .stat-icon,
+.overview-grid .stat-card.metric-green .stat-icon {
+  color: #fff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.72);
+}
+
+.overview-grid .stat-card.metric-red .stat-icon {
+  background-image: linear-gradient(135deg, rgba(210, 56, 75, 0.82), rgba(118, 19, 34, 0.92)), url("../../pexels-viliamphotography-28966343.jpg");
+}
+
+.overview-grid .stat-card.metric-orange .stat-icon {
+  background-image: linear-gradient(135deg, rgba(224, 130, 34, 0.82), rgba(132, 59, 10, 0.92)), url("../../pexels-viliamphotography-28966343.jpg");
+}
+
+.overview-grid .stat-card.metric-sky .stat-icon {
+  background-image: linear-gradient(135deg, rgba(21, 155, 211, 0.82), rgba(9, 75, 123, 0.92)), url("../../pexels-viliamphotography-28966343.jpg");
+}
+
+.overview-grid .stat-card.metric-green .stat-icon {
+  background-image: linear-gradient(135deg, rgba(22, 138, 102, 0.82), rgba(8, 76, 54, 0.92)), url("../../pexels-viliamphotography-28966343.jpg");
+}
+
+.overview-grid .stat-card {
+  isolation: isolate;
+}
+
+.overview-grid .stat-card::after {
+  display: none;
+}
+
+.overview-grid .stat-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+.overview-grid .stat-card > div:nth-child(2) {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: end;
+  gap: 3px 12px;
+  min-height: 96px;
+  padding: 14px 7px 5px;
+}
+
+.overview-grid .stat-sparkline {
+  position: static;
+  align-self: flex-end;
+  width: 86px;
+  margin: 0 8px 8px auto;
+  transform: none;
+}
+
+.overview-grid .stat-sparkline svg {
+  width: 74px;
+  height: 30px;
+}
+
 @keyframes sparklinePulse {
   0%, 100% { opacity: 0.72; transform: scale(0.9); transform-origin: center; }
   50% { opacity: 1; transform: scale(1.18); transform-origin: center; }

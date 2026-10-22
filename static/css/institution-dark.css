@@ -1,0 +1,135 @@
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --institution-ink: #e6f1f5;
+  --institution-muted: #a9bdc8;
+  --institution-line: #2d4756;
+  --institution-bg: #0b1720;
+  --institution-panel: #142733;
+  --institution-blue-soft: #1a4051;
+}
+
+html[data-theme="dark"] body.institution-page {
+  color: var(--institution-ink);
+  background: #0b1720;
+}
+
+html[data-theme="dark"] .institution-page::before { opacity: .1; }
+html[data-theme="dark"] .institution-page::after { background: linear-gradient(135deg, rgba(9, 25, 35, .96), rgba(14, 34, 46, .94)); }
+html[data-theme="dark"] .institution-topbar { border-bottom-color: #2d4756; background: #10222d; box-shadow: 0 10px 28px rgba(0, 0, 0, .3); }
+html[data-theme="dark"] .institution-brand,
+html[data-theme="dark"] .institution-brand-name,
+html[data-theme="dark"] .institution-identity strong { color: #edf8fb; }
+html[data-theme="dark"] .institution-brand-name > span { color: #82d8f2; }
+html[data-theme="dark"] .institution-identity { border-color: #2d4756; }
+html[data-theme="dark"] .institution-heading,
+html[data-theme="dark"] .institution-case-list,
+html[data-theme="dark"] .institution-panel,
+html[data-theme="dark"] .institution-password-panel,
+html[data-theme="dark"] .institution-tabs a { border-color: #2d4756; background: #142733; box-shadow: 0 16px 34px rgba(0, 0, 0, .2); }
+html[data-theme="dark"] .institution-heading h1,
+html[data-theme="dark"] .institution-case-heading h1,
+html[data-theme="dark"] .institution-case-content h2,
+html[data-theme="dark"] .institution-empty h2,
+html[data-theme="dark"] .institution-panel h2,
+html[data-theme="dark"] .institution-map-panel-heading h2 { color: #edf8fb; }
+html[data-theme="dark"] .institution-tabs a { color: #a9bdc8; }
+html[data-theme="dark"] .institution-tabs a:hover { border-color: #4a91ac; background: #1a3543; }
+html[data-theme="dark"] .institution-tabs a.active { color: #fff; background: linear-gradient(120deg, #155a80, #167d75, #b46631); }
+html[data-theme="dark"] .institution-case-row { border-color: #2d4756; background: #142733; }
+html[data-theme="dark"] .institution-case-row:hover { background: #1b3543; }
+html[data-theme="dark"] .institution-case-row.unread { background: linear-gradient(90deg, rgba(106, 47, 45, .5), rgba(20, 39, 51, .9)); }
+html[data-theme="dark"] .institution-case-meta strong,
+html[data-theme="dark"] .institution-map-summary strong,
+html[data-theme="dark"] .map-popup strong { color: #edf8fb; }
+html[data-theme="dark"] .institution-message-brief,
+html[data-theme="dark"] .institution-chat-message,
+html[data-theme="dark"] .institution-map-fit,
+html[data-theme="dark"] .institution-archive-button { border-color: #2d4756; color: #d7e7ed; background: #1b3543; }
+html[data-theme="dark"] .institution-call-link,
+html[data-theme="dark"] .institution-call-button { border-color: #2c766f; color: #a9f0e0; background: #153934; }
+html[data-theme="dark"] .institution-map-summary { border-color: #2d6175; color: #9ae7f7; background: #173847; }
+html[data-theme="dark"] .institution-map-panel { border-color: #2d4756; background: #142733; }
+html[data-theme="dark"] .institution-map-panel-heading { border-color: #2d4756; }
+html[data-theme="dark"] .institution-map-empty { background: rgba(20, 39, 51, .94); }
+html[data-theme="dark"] .map-popup-selected { background: linear-gradient(#142733, #142733) padding-box, linear-gradient(110deg, #8a7cf0, #e36f7c, #f2a04a, #43b9e6, #8a7cf0) border-box; }
+html[data-theme="dark"] .official-chat-panel { border-color: #2d4756; background: #142733; box-shadow: 0 20px 60px rgba(0, 0, 0, .45); }
+html[data-theme="dark"] .official-chat-messages,
+html[data-theme="dark"] .official-chat-panel form { background: #0f202b; }
+html[data-theme="dark"] .official-chat-message { color: #d9e8ee; background: #1b3543; }
+html[data-theme="dark"] .official-chat-panel textarea { border-color: #2d4756; color: #edf8fb; background: #10222d; }
+html[data-theme="dark"] .institution-theme-toggle { border-color: #3a6071; color: #e6f5fa; background: #183746; }
+html[data-theme="dark"] .institution-theme-toggle:hover { background: #205064; }
+
+html[data-theme="dark"] body.institution-login-page { background: #0b1720; }
+html[data-theme="dark"] .institution-login-page::after { background: linear-gradient(135deg, rgba(5, 26, 38, .82), rgba(17, 72, 76, .38), rgba(88, 47, 24, .3)); }
+html[data-theme="dark"] .institution-login-shell { border-color: #365665; background: rgba(15, 35, 46, .8); }
+html[data-theme="dark"] .institution-login-shell .institution-login-card { border-color: #365665; background: #142733; }
+html[data-theme="dark"] .institution-login-shell .institution-login-card input,
+html[data-theme="dark"] .institution-login-shell .institution-login-card select { border-color: #365665; color: #edf8fb; background: #10222d; }
+
+.institution-theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 38px;
+  padding: 8px 12px;
+  border: 1px solid var(--institution-line);
+  border-radius: 10px;
+  color: var(--institution-blue);
+  background: var(--institution-panel);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.institution-theme-toggle:hover { border-color: var(--institution-blue); background: var(--institution-blue-soft); }
+.institution-theme-toggle-icon { font-size: 16px; line-height: 1; }
+.institution-topbar-actions { display: inline-flex; align-items: center; gap: 10px; margin-left: auto; }
+.institution-login-theme-toggle { position: absolute; top: 20px; right: 20px; }
+.institution-login-shell .institution-login-card { position: relative; }
+
+@media (max-width: 700px) {
+  .institution-theme-toggle-label { display: none; }
+  .institution-topbar-actions { gap: 6px; }
+}
+
+html[data-theme="dark"] .institution-page .institution-button {
+  border: 0;
+  color: #f3fbff;
+  background: linear-gradient(135deg, #17394d, #1d6381 58%, #2487a7);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, .28), inset 0 1px 0 rgba(255, 255, 255, .16);
+}
+
+html[data-theme="dark"] .institution-page .institution-button:hover {
+  color: #fff;
+  background: linear-gradient(135deg, #1d4d65, #287f9e 58%, #35a8c4);
+  box-shadow: 0 18px 30px rgba(0, 0, 0, .34), inset 0 1px 0 rgba(255, 255, 255, .2);
+}
+
+html[data-theme="dark"] .institution-page .institution-back,
+html[data-theme="dark"] .institution-page .institution-back-link {
+  border-color: transparent;
+  color: #eefaff;
+  background: linear-gradient(135deg, #17394d, #1d6381 58%, #2487a7);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, .28), inset 0 1px 0 rgba(255, 255, 255, .16);
+}
+
+html[data-theme="dark"] .institution-page .institution-back:hover,
+html[data-theme="dark"] .institution-page .institution-back-link:hover {
+  background: linear-gradient(135deg, #1d4d65, #287f9e 58%, #35a8c4);
+}
+
+html[data-theme="dark"] body.institution-page .institution-empty {
+  color: #b4c8d2;
+  background: #142733;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .04), 0 8px 18px rgba(0, 0, 0, .18);
+}
+
+html[data-theme="dark"] body.institution-page .institution-empty h2 {
+  color: #edf8fb;
+}
+
+html[data-theme="dark"] body.institution-page .institution-empty p {
+  color: #a9bdc8;
+}

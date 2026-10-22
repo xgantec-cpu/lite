@@ -1,0 +1,47 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ alert.title }} · Public Safety Alert</title>
+  <link rel="stylesheet" href="{% static 'css/site.css' %}?v=20261022-public-alert-detail">
+</head>
+<body class="page-public-alert-detail">
+  <header class="public-motto-header"><span>Saving lives is better.</span></header>
+  <main class="public-alert-detail-shell">
+    <a class="public-alert-detail-back" href="{% url 'subscriber_alerts' %}">← Back to safety alerts</a>
+    <article class="public-alert-detail-card" aria-labelledby="public-alert-title">
+      <header class="public-alert-detail-header">
+        <div class="public-alert-detail-lockup">
+          <span class="public-alert-detail-symbol" aria-hidden="true">⚠</span>
+          <span class="public-alert-detail-badge">PUBLIC SAFETY ALERT</span>
+        </div>
+        <span class="public-alert-detail-severity">Urgent notice</span>
+      </header>
+      <p class="public-alert-detail-kicker">District safety information</p>
+      <h1 id="public-alert-title">{{ alert.title }}</h1>
+      <div class="public-alert-notice-strip" role="note">
+        <span class="public-alert-notice-icon" aria-hidden="true">!</span>
+        <div>
+          <strong>Important notice</strong>
+          <p>This is an official public safety message for the district shown below.</p>
+        </div>
+      </div>
+      <p class="public-alert-detail-body">{{ alert.body }}</p>
+      <div class="public-alert-detail-meta">
+        <span><b>District</b>{{ alert.area.name }}</span>
+        <time datetime="{{ alert.created_at|date:'c' }}"><b>Published</b>{{ alert.created_at|date:"j F Y, H:i" }}</time>
+      </div>
+      <div class="public-alert-detail-guidance">
+        <strong>Stay aware</strong>
+        <p>Follow official instructions, avoid sharing private case details, and contact emergency services if you are in immediate danger.</p>
+      </div>
+      <div class="public-alert-detail-actions">
+        <a class="public-alert-detail-primary" href="{% url 'subscriber_alerts' %}">Manage alert places</a>
+        <a class="public-alert-detail-secondary" href="{% url 'home' %}">Emergency assistance</a>
+      </div>
+    </article>
+  </main>
+</body>
+</html>

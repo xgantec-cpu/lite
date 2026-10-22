@@ -23,16 +23,21 @@ class WorkspaceInactivityMiddleware:
             if last_activity and now - last_activity > self.timeout_seconds:
                 logout(request)
                 if self._expects_json(request):
-                    return JsonResponse({"error": "Your session expired after five minutes of inactivity."}, status=401)
+                    response = JsonResponse({"error": "Your session expired after five minutes of inactivity."}, status=401)
+                    return self._secure_workspace_response(request, response)
                 login_path = "/institution/login/" if request.path.startswith("/institution/") else "/dashboard/login/"
-                return redirect(f"{login_path}?reason=inactivity")
+                response = redirect(f"{login_path}?reason=inactivity")
+                return self._secure_workspace_response(request, response)
             request.session["workspace_last_activity"] = now
-        return self.get_response(request)
+        response = self.get_response(request)
+        return self._secure_workspace_response(request, response)
 
     @staticmethod
     def _is_workspace_path(request):
         path = request.path
         if path.startswith(("/dashboard/", "/institution/")):
+            return True
+        if path == "/session/keepalive/":
             return True
         if path.startswith("/chat/"):
             has_public_session = bool(request.session.get("request_id"))
@@ -43,6 +48,15 @@ class WorkspaceInactivityMiddleware:
     @staticmethod
     def _expects_json(request):
         return request.path.startswith("/chat/") or "application/json" in request.headers.get("Accept", "")
+
+    @staticmethod
+    def _secure_workspace_response(request, response):
+        if request.path.startswith(("/dashboard/", "/institution/", "/chat/", "/inhouse/", "/admin/", "/auth/mfa/", "/track/", "/session/")):
+            response["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+            response["Pragma"] = "no-cache"
+            response["Expires"] = "0"
+            response["Permissions-Policy"] = "camera=(self), microphone=(self), geolocation=(self)"
+        return response
 
 
 class AdminMFAEnforcementMiddleware:

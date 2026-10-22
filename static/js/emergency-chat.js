@@ -48,13 +48,29 @@
   let activationInFlight = false;
   let rtcPeer;
   let rtcLocalStream;
+  let rtcRemoteStream;
   let rtcCallId = "";
   let rtcPendingCandidates = [];
   let rtcOfferStarted = false;
   let rtcLocalMuted = false;
   let rtcSpeakerEnabled = true;
   let rtcSignalQueue = [];
-  const rtcConfiguration = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
+
+  function configuredIceServers() {
+    try {
+      const configured = JSON.parse(widget.dataset.rtcIceServers || "[]");
+      return Array.isArray(configured) && configured.length
+        ? configured
+        : [{ urls: "stun:stun.l.google.com:19302" }];
+    } catch (error) {
+      return [{ urls: "stun:stun.l.google.com:19302" }];
+    }
+  }
+
+  const rtcConfiguration = {
+    iceServers: configuredIceServers(),
+    iceCandidatePoolSize: 10,
+  };
   if (fullscreen && panel) panel.hidden = false;
 
   function csrfToken() {
@@ -86,10 +102,41 @@
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       throw new Error("This browser cannot access a microphone. Use HTTPS or a supported browser.");
     }
-    rtcLocalStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    rtcLocalStream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      video: false,
+    });
     rtcLocalStream.getAudioTracks().forEach(function (track) { track.enabled = !rtcLocalMuted; });
     setRtcMicStatus("Microphone active", true);
     return rtcLocalStream;
+  }
+
+  function unlockRtcAudio() {
+    if (!rtcAudio) return;
+    rtcAudio.autoplay = true;
+    rtcAudio.playsInline = true;
+    rtcAudio.muted = !rtcSpeakerEnabled;
+    rtcAudio.volume = 1;
+    if (!rtcAudio.srcObject && window.MediaStream) rtcAudio.srcObject = new MediaStream();
+    if (!rtcSpeakerEnabled || !rtcAudio.srcObject) return;
+    const playback = rtcAudio.play();
+    if (playback && playback.catch) playback.catch(function () {
+      showStatus("Tap Speaker to allow call audio.");
+    });
+  }
+
+  function attachRtcAudio(event) {
+    if (!rtcAudio) return;
+    if (event.streams && event.streams[0]) {
+      rtcRemoteStream = event.streams[0];
+    } else {
+      rtcRemoteStream = rtcRemoteStream || (window.MediaStream ? new MediaStream() : null);
+      if (rtcRemoteStream && event.track && !rtcRemoteStream.getTracks().some(function (track) { return track.id === event.track.id; })) {
+        rtcRemoteStream.addTrack(event.track);
+      }
+    }
+    if (rtcRemoteStream) rtcAudio.srcObject = rtcRemoteStream;
+    unlockRtcAudio();
   }
 
   function sendRtcSignal(kind, values) {
@@ -120,10 +167,7 @@
       if (event.candidate) sendRtcSignal("ice", { candidate: event.candidate });
     });
     rtcPeer.addEventListener("track", function (event) {
-      if (!rtcAudio) return;
-      rtcAudio.srcObject = event.streams[0];
-      rtcAudio.muted = !rtcSpeakerEnabled;
-      rtcAudio.play().catch(function () { showStatus("Tap Speaker to start the remote audio."); });
+      attachRtcAudio(event);
     });
     rtcPeer.addEventListener("connectionstatechange", function () {
       if (!rtcPeer) return;
@@ -136,6 +180,13 @@
         cleanupRtc(false);
       }
     });
+    rtcPeer.addEventListener("iceconnectionstatechange", function () {
+      if (!rtcPeer) return;
+      if (rtcPeer.iceConnectionState === "failed") {
+        showStatus("The call could not reach the other device. Check the network or TURN setup.");
+        cleanupRtc(false);
+      }
+    });
     return rtcPeer;
   }
 
@@ -144,6 +195,7 @@
     rtcOfferStarted = true;
     rtcCallId = String(call.id);
     try {
+      unlockRtcAudio();
       await ensureRtcLocalStream();
       const peer = createRtcPeer();
       const offer = await peer.createOffer({ offerToReceiveAudio: true });
@@ -162,6 +214,7 @@
     if (signal.kind === "offer" && activeCall && String(activeCall.id) === String(signal.call_id)) {
       rtcCallId = String(signal.call_id);
       try {
+        unlockRtcAudio();
         await ensureRtcLocalStream();
         const peer = createRtcPeer();
         await peer.setRemoteDescription(signal.description);
@@ -206,6 +259,7 @@
       rtcAudio.pause();
       rtcAudio.srcObject = null;
     }
+    rtcRemoteStream = null;
     rtcCallId = "";
     rtcPendingCandidates = [];
     rtcOfferStarted = false;
@@ -238,7 +292,7 @@
     }
     items.forEach(function (item) {
       const message = document.createElement("article");
-      message.className = "emergency-chat-message" + (item.mine ? " mine" : "");
+      message.className = "emergency-chat-message" + (item.mine ? " mine" : "") + (item.sender_type === "system" ? " system" : "");
 
       const meta = document.createElement("small");
       meta.textContent = item.sender + " · " + item.created_at;
@@ -351,6 +405,7 @@
       button.textContent = choice[1];
       button.addEventListener("click", function () {
         if (choice[0] === "accepted") {
+          unlockRtcAudio();
           ensureRtcLocalStream().then(function () {
             sendAction("call_response", { call_id: incomingCall.id, status: choice[0] });
           }).catch(function (error) {
@@ -538,6 +593,7 @@
       if (channel === "text" && bodyInput) bodyInput.focus();
       if (channel === "audio") startRecording();
       if (channel === "call") {
+        unlockRtcAudio();
         ensureRtcLocalStream().then(function () {
           sendAction("call");
         }).catch(function (error) {
@@ -567,6 +623,7 @@
     if (rtcAudio) rtcAudio.muted = !speakerEnabled;
     callSpeaker.classList.toggle("active", speakerEnabled);
     callSpeaker.querySelector("small").textContent = speakerEnabled ? "Speaker on" : "Speaker";
+    if (speakerEnabled) unlockRtcAudio();
     showStatus(speakerEnabled ? "Speaker mode enabled for this device." : "Speaker mode disabled.");
   });
 

@@ -15,18 +15,18 @@
     } catch (error) {}
   </script>
   <title>{% block title %}Responder dashboard{% endblock %} · Rapid Response</title>
-  <link rel="stylesheet" href="{% static 'css/dashboard/dashboard.css' %}?v=20261028">
-  <link rel="stylesheet" href="{% static 'css/dashboard/map.css' %}?v=20261004">
+  <link rel="stylesheet" href="{% static 'css/dashboard/dashboard.css' %}?v=20261021-report-heading">
+  <link rel="stylesheet" href="{% static 'css/dashboard/map.css' %}?v=20261021-area-alerts">
   <link rel="stylesheet" href="{% static 'css/dashboard/referrals.css' %}?v=20261001">
-  <link rel="stylesheet" href="{% static 'css/dashboard/uichat-theme.css' %}?v=20261075">
-  <link rel="stylesheet" href="{% static 'css/chat-rtc.css' %}?v=20261015">
+  <link rel="stylesheet" href="{% static 'css/dashboard/uichat-theme.css' %}?v=20261021-icon-panels">
+  <link rel="stylesheet" href="{% static 'css/chat-rtc.css' %}?v=20261022-portal-audio">
   <link rel="stylesheet" href="{% static 'css/dashboard/report-builder.css' %}?v=20261026">
   {% block extra_css %}{% endblock %}
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
-  <link rel="stylesheet" href="{% static 'css/dashboard/dark-mode.css' %}?v=20261029">
+  <link rel="stylesheet" href="{% static 'css/dashboard/dark-mode.css' %}?v=20261021-black-icons">
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 </head>
-<body class="page-operations" data-session-lock-url="{% url 'dashboard_logout' %}">
+<body class="page-operations" data-session-lock-url="{% url 'dashboard_logout' %}" data-session-keepalive-url="{% url 'workspace_keepalive' %}">
   <div class="app-shell">
     <aside class="sidebar" id="dashboard-sidebar">
       <a class="brand" href="{% url 'dashboard_home' %}"><img class="brand-logo" src="{% static 'Rapid Response Emergency Logo.png' %}" alt=""><span>Rapid<span>Response</span></span></a>
@@ -88,7 +88,7 @@
     </div>
   </dialog>
 </body>
-<script src="{% static 'js/session-activity.js' %}?v=20261002"></script>
+<script src="{% static 'js/session-activity.js' %}?v=20261022-session-keepalive"></script>
 <script src="{% static 'js/sidebar-toggle.js' %}?v=20261026"></script>
 <script src="{% static 'js/theme-toggle.js' %}?v=20261002"></script>
   <script src="{% static 'js/report-builder.js' %}?v=20261021"></script>

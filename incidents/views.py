@@ -12,13 +12,18 @@ from django.http import FileResponse, HttpRequest, HttpResponse, HttpResponseFor
 from django.core.paginator import Paginator
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from urllib.error import HTTPError, URLError
 from urllib.parse import quote_plus
+from urllib.request import Request as UrlRequest, urlopen
 from django.utils import timezone
 from decimal import Decimal, InvalidOperation
+import base64
 import hashlib
+import json
 import logging
 import math
 import mimetypes
+import os
 import re
 import secrets
 import uuid
@@ -29,15 +34,16 @@ from .forms import EmergencyRequestForm
 from .forms_referral import ReferralForm, masked_admin_label
 from .audit import record_security_event
 from .device_detection import detect_device
-from .geography import area_name_for_boundary, boundary_features, boundary_name_for_point
+from .geography import area_name_for_boundary, boundary_features, boundary_name_for_point, route_area_names
 from .healthcare import matching_area_ids
-from .models import CallRequest, CaseMessage, EmergencyChatCall, EmergencyChatMessage, EmergencyChatRoom, EmergencyRequest, HospitalFacility, Incident, IncidentFavorite, IncidentNote, InHouseConversation, InHouseMessage, InstitutionProfile, LocationArea, LocationPing, MFAProfile, OperationsAccess, Recording, Referral, ResponseProfile, area_routing_code
+from .models import AreaAlert, CallRequest, CaseMessage, EmergencyChatCall, EmergencyChatMessage, EmergencyChatRoom, EmergencyRequest, HospitalFacility, Incident, IncidentFavorite, IncidentNote, InHouseConversation, InHouseMessage, InstitutionProfile, LocationArea, LocationPing, MFAProfile, OperationsAccess, PublicAlertSubscription, Recording, Referral, ResponseProfile, TravelSafetyPlan, area_routing_code
 from .mfa import generate_secret, otpauth_uri, verify_totp
 from .realtime import broadcast_case_chat_update, broadcast_emergency_chat_update, broadcast_inhouse_chat_update
 from .websocket_auth import make_public_chat_token, make_websocket_token, public_chat_token_identity, public_chat_token_matches
 
 
 CRITICAL_TRACKING_WINDOW = timedelta(minutes=30)
+PUBLIC_ALERT_LIFETIME = timedelta(hours=4)
 TRACKING_OPEN_STATUSES = {"new", "acknowledged", "responding"}
 MAX_VIDEO_UPLOAD_BYTES = 25 * 1024 * 1024
 MAX_AUDIO_UPLOAD_BYTES = 10 * 1024 * 1024
@@ -366,7 +372,452 @@ def home(request: HttpRequest) -> HttpResponse:
     return render(request, "incidents/home.html", {
         "form": form,
         "districts": LocationArea.objects.filter(active=True),
+        "webpush_public_key": settings.WEBPUSH_VAPID_PUBLIC_KEY,
     })
+
+
+def service_worker(request: HttpRequest) -> HttpResponse:
+    response = render(request, "service-worker.js", content_type="application/javascript")
+    response["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response["Service-Worker-Allowed"] = "/"
+    return response
+
+
+def _upsert_public_alert_subscription(request, payload, areas, save_direct_areas=True, direct_areas=None):
+    endpoint = str(payload.get("endpoint") or "").strip()
+    keys = payload.get("keys") or {}
+    p256dh = str(keys.get("p256dh") or "").strip()
+    auth = str(keys.get("auth") or "").strip()
+    if not endpoint.startswith("https://") or not p256dh or not auth or not areas:
+        raise ValueError("Choose at least one district and provide a valid browser subscription.")
+    direct_areas = list(areas if direct_areas is None else direct_areas)
+    client_uuid = _parse_client_uuid(payload.get("client_uuid"))
+    endpoint_hash = hashlib.sha256(endpoint.encode("utf-8")).hexdigest()
+    subscription = PublicAlertSubscription.objects.filter(endpoint_hash=endpoint_hash).first()
+    previous_area_id = subscription.area_id if subscription else None
+    previous_direct_alerts = subscription.receives_area_alerts if subscription else False
+    if subscription is None:
+        subscription = PublicAlertSubscription.objects.create(
+            area=areas[0],
+            receives_area_alerts=save_direct_areas,
+            endpoint_hash=endpoint_hash,
+            endpoint=endpoint,
+            p256dh=p256dh,
+            auth=auth,
+            client_uuid=client_uuid,
+            user_agent=request.META.get("HTTP_USER_AGENT", "")[:300],
+            active=True,
+        )
+    else:
+        subscription.endpoint = endpoint
+        subscription.p256dh = p256dh
+        subscription.auth = auth
+        subscription.client_uuid = client_uuid
+        subscription.user_agent = request.META.get("HTTP_USER_AGENT", "")[:300]
+        subscription.active = True
+        subscription.last_seen_at = timezone.now()
+        subscription.save(update_fields=["endpoint", "p256dh", "auth", "client_uuid", "user_agent", "active", "last_seen_at"])
+    if save_direct_areas:
+        if not subscription.receives_area_alerts:
+            subscription.receives_area_alerts = True
+            subscription.area = direct_areas[0] if direct_areas else areas[0]
+            subscription.save(update_fields=["receives_area_alerts", "area"])
+        if previous_area_id and previous_direct_alerts:
+            subscription.notification_areas.add(previous_area_id)
+        subscription.notification_areas.add(*[area.pk for area in direct_areas])
+    return subscription
+
+
+def _subscription_area_list(subscription):
+    if not subscription.receives_area_alerts:
+        return []
+    area_ids = set(subscription.notification_areas.values_list("pk", flat=True))
+    if subscription.area_id:
+        area_ids.add(subscription.area_id)
+    return list(LocationArea.objects.filter(pk__in=area_ids, active=True).order_by("name"))
+
+
+def public_alert_subscribe(request: HttpRequest) -> JsonResponse:
+    if request.method != "POST":
+        return JsonResponse({"error": "Use POST to subscribe to area alerts."}, status=405)
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return JsonResponse({"error": "The subscription payload is invalid."}, status=400)
+    area_values = payload.get("area_ids")
+    if area_values is None:
+        area_values = [payload.get("area_id")]
+    try:
+        area_ids = {int(value) for value in area_values if value not in (None, "")}
+    except (TypeError, ValueError):
+        area_ids = set()
+    areas = list(LocationArea.objects.filter(pk__in=area_ids, active=True).order_by("name"))
+    if len(areas) != len(area_ids):
+        return JsonResponse({"error": "Choose only active Uganda districts."}, status=400)
+    try:
+        subscription = _upsert_public_alert_subscription(request, payload, areas)
+    except ValueError as error:
+        return JsonResponse({"error": str(error)}, status=400)
+    return JsonResponse({"ok": True, "area": areas[0].name, "areas": [area.name for area in _subscription_area_list(subscription)]})
+
+
+def public_alert_preferences(request: HttpRequest) -> JsonResponse:
+    if request.method != "POST":
+        return JsonResponse({"error": "Use POST to read alert preferences."}, status=405)
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return JsonResponse({"error": "The subscription payload is invalid."}, status=400)
+    endpoint = str(payload.get("endpoint") or "").strip()
+    subscription = PublicAlertSubscription.objects.filter(
+        endpoint_hash=hashlib.sha256(endpoint.encode("utf-8")).hexdigest(),
+        active=True,
+    ).first() if endpoint.startswith("https://") else None
+    if subscription is None:
+        return JsonResponse({"areas": []})
+    return JsonResponse({"areas": [area.pk for area in _subscription_area_list(subscription)]})
+
+
+def public_alert_remove_area(request: HttpRequest) -> JsonResponse:
+    if request.method != "POST":
+        return JsonResponse({"error": "Use POST to remove an alert district."}, status=405)
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+        area_id = int(payload.get("area_id"))
+    except (TypeError, ValueError, UnicodeDecodeError, json.JSONDecodeError):
+        return JsonResponse({"error": "The alert district is invalid."}, status=400)
+    endpoint = str(payload.get("endpoint") or "").strip()
+    subscription = PublicAlertSubscription.objects.filter(
+        endpoint_hash=hashlib.sha256(endpoint.encode("utf-8")).hexdigest(),
+        active=True,
+    ).first() if endpoint.startswith("https://") else None
+    if subscription is None:
+        return JsonResponse({"error": "No active browser subscription was found."}, status=404)
+    remaining = [area for area in _subscription_area_list(subscription) if area.pk != area_id]
+    subscription.notification_areas.remove(area_id)
+    if subscription.area_id == area_id:
+        if remaining:
+            subscription.area = remaining[0]
+            subscription.save(update_fields=["area", "last_seen_at"])
+        else:
+            subscription.active = False
+            subscription.save(update_fields=["active", "last_seen_at"])
+    return JsonResponse({"ok": True, "areas": [area.pk for area in remaining]})
+
+
+def subscriber_alerts(request: HttpRequest) -> HttpResponse:
+    return render(request, "incidents/subscriber_alerts.html", {
+        "districts": LocationArea.objects.filter(active=True),
+        "webpush_public_key": settings.WEBPUSH_VAPID_PUBLIC_KEY,
+    })
+
+
+def public_alert_history(request: HttpRequest) -> HttpResponse:
+    alerts = (
+        AreaAlert.objects.filter(
+            created_at__gte=timezone.now() - PUBLIC_ALERT_LIFETIME,
+            delivery_status__in=("sent", "partial"),
+        )
+        .select_related("area")
+        .order_by("-created_at", "-pk")
+    )
+    return render(request, "incidents/public_alert_history.html", {"alerts": alerts})
+
+
+def public_area_alert_detail(request: HttpRequest, alert_id: int) -> HttpResponse:
+    alert = get_object_or_404(
+        AreaAlert.objects.select_related("area"),
+        pk=alert_id,
+    )
+    if alert.created_at < timezone.now() - PUBLIC_ALERT_LIFETIME:
+        return redirect("subscriber_alerts")
+    return render(request, "incidents/public_alert_detail.html", {"alert": alert})
+
+
+def _travel_route_map_features(route_areas):
+    """Attach ordered Uganda district boundary features to a travel corridor."""
+    boundaries = boundary_features().get("features", [])
+    features = []
+    for area in route_areas:
+        feature = next(
+            (
+                item for item in boundaries
+                if item.get("properties", {}).get("name") == area.name
+                or area_name_for_boundary(item.get("properties", {}).get("name"), [area.name]) == area.name
+            ),
+            None,
+        )
+        if feature is None:
+            continue
+        features.append({
+            **feature,
+            "properties": {**feature.get("properties", {}), "route_name": area.name},
+        })
+    return {"type": "FeatureCollection", "features": features}
+
+
+def _geometry_center(geometry):
+    points = []
+
+    def collect(value):
+        if isinstance(value, (list, tuple)) and len(value) >= 2 and all(isinstance(item, (int, float)) for item in value[:2]):
+            points.append((float(value[0]), float(value[1])))
+            return
+        if isinstance(value, (list, tuple)):
+            for item in value:
+                collect(item)
+
+    collect((geometry or {}).get("coordinates", []))
+    if not points:
+        return None
+    longitudes = [point[0] for point in points]
+    latitudes = [point[1] for point in points]
+    return (
+        (min(latitudes) + max(latitudes)) / 2,
+        (min(longitudes) + max(longitudes)) / 2,
+    )
+
+
+def _google_duration_seconds(value):
+    try:
+        return float(str(value or "").rstrip("s"))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _decode_google_polyline(encoded):
+    points = []
+    index = 0
+    latitude = 0
+    longitude = 0
+    while index < len(encoded):
+        values = []
+        for _ in range(2):
+            result = 0
+            shift = 0
+            while True:
+                if index >= len(encoded):
+                    return points
+                byte = ord(encoded[index]) - 63
+                index += 1
+                result |= (byte & 0x1F) << shift
+                shift += 5
+                if byte < 0x20:
+                    break
+            values.append(~(result >> 1) if result & 1 else result >> 1)
+        latitude += values[0]
+        longitude += values[1]
+        points.append([latitude / 100000, longitude / 100000])
+    return points
+
+
+def _google_traffic_route(origin_point, destination_point):
+    api_key = getattr(settings, "GOOGLE_MAPS_API_KEY", "")
+    if not api_key or not origin_point or not destination_point:
+        return None
+    request_payload = {
+        "origin": {"location": {"latLng": {"latitude": origin_point[0], "longitude": origin_point[1]}}},
+        "destination": {"location": {"latLng": {"latitude": destination_point[0], "longitude": destination_point[1]}}},
+        "travelMode": "DRIVE",
+        "routingPreference": "TRAFFIC_AWARE_OPTIMAL",
+        "computeAlternativeRoutes": False,
+        "languageCode": "en-US",
+        "units": "METRIC",
+    }
+    request = UrlRequest(
+        "https://routes.googleapis.com/directions/v2:computeRoutes",
+        data=json.dumps(request_payload).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "X-Goog-Api-Key": api_key,
+            "X-Goog-FieldMask": "routes.distanceMeters,routes.duration,routes.staticDuration,routes.polyline.encodedPolyline",
+        },
+        method="POST",
+    )
+    try:
+        with urlopen(request, timeout=10) as response:
+            data = json.loads(response.read().decode("utf-8"))
+    except (HTTPError, URLError, TimeoutError, OSError, ValueError) as error:
+        logger.warning("Google traffic route lookup failed: %s", error)
+        return None
+    route = (data.get("routes") or [None])[0]
+    if not route:
+        return None
+    duration = _google_duration_seconds(route.get("duration"))
+    static_duration = _google_duration_seconds(route.get("staticDuration"))
+    traffic_delay = max(0, duration - static_duration) if static_duration else 0
+    delay_ratio = traffic_delay / static_duration if static_duration else 0
+    if traffic_delay <= 120 or delay_ratio < 0.1:
+        traffic_level = "Light"
+    elif traffic_delay <= 600 or delay_ratio < 0.25:
+        traffic_level = "Moderate"
+    else:
+        traffic_level = "Heavy"
+    encoded_polyline = (route.get("polyline") or {}).get("encodedPolyline", "")
+    return {
+        "provider": "Google",
+        "distance_meters": route.get("distanceMeters"),
+        "duration_seconds": duration,
+        "static_duration_seconds": static_duration,
+        "traffic_delay_seconds": traffic_delay,
+        "traffic_level": traffic_level,
+        "road_points": _decode_google_polyline(encoded_polyline),
+        "updated_at": timezone.now().isoformat(),
+    }
+
+
+def travel_location_area(request: HttpRequest) -> JsonResponse:
+    if request.method != "POST":
+        return JsonResponse({"error": "Use POST to identify the current travel district."}, status=405)
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+        latitude = float(payload.get("latitude"))
+        longitude = float(payload.get("longitude"))
+    except (TypeError, ValueError, UnicodeDecodeError, json.JSONDecodeError):
+        return JsonResponse({"error": "The current GPS coordinates are invalid."}, status=400)
+    if not math.isfinite(latitude) or not math.isfinite(longitude) or not -90 <= latitude <= 90 or not -180 <= longitude <= 180:
+        return JsonResponse({"error": "The current GPS coordinates are outside a valid range."}, status=400)
+    boundary_name = boundary_name_for_point(latitude, longitude)
+    available_names = list(LocationArea.objects.filter(active=True).values_list("name", flat=True))
+    area_name = area_name_for_boundary(boundary_name, available_names)
+    area = LocationArea.objects.filter(name=area_name, active=True).first() if area_name else None
+    if area is None:
+        return JsonResponse({"error": "Your GPS position is outside the supported Uganda districts. Choose the starting district manually."}, status=404)
+    return JsonResponse({
+        "ok": True,
+        "area": {"id": area.pk, "name": area.name},
+        "message": f"Starting district found: {area.name}. Choose your destination district to continue.",
+    })
+
+
+def travel_alert_plan(request: HttpRequest) -> JsonResponse:
+    if request.method != "POST":
+        return JsonResponse({"error": "Use POST to start a travel safety watch."}, status=405)
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+        origin_id = int(payload.get("origin_area"))
+        destination_id = int(payload.get("destination_area"))
+    except (TypeError, ValueError, UnicodeDecodeError, json.JSONDecodeError):
+        return JsonResponse({"error": "Choose a starting district and destination district."}, status=400)
+    areas = list(LocationArea.objects.filter(pk__in={origin_id, destination_id}, active=True))
+    areas_by_id = {area.pk: area for area in areas}
+    if len(areas) != 2 or origin_id == destination_id:
+        return JsonResponse({"error": "Choose two different active Uganda districts."}, status=400)
+    origin = areas_by_id[origin_id]
+    destination = areas_by_id[destination_id]
+    available_names = list(LocationArea.objects.filter(active=True).values_list("name", flat=True))
+    route_names = route_area_names(origin.name, destination.name, available_names)
+    route_areas = list(LocationArea.objects.filter(name__in=route_names, active=True))
+    route_by_name = {area.name: area for area in route_areas}
+    route_areas = [route_by_name[name] for name in route_names if name in route_by_name]
+    if origin not in route_areas:
+        route_areas.insert(0, origin)
+    if destination not in route_areas:
+        route_areas.append(destination)
+    route_map = _travel_route_map_features(route_areas)
+    route_features_by_name = {
+        feature.get("properties", {}).get("route_name"): feature
+        for feature in route_map.get("features", [])
+    }
+    origin_point = _geometry_center((route_features_by_name.get(origin.name) or {}).get("geometry"))
+    destination_point = _geometry_center((route_features_by_name.get(destination.name) or {}).get("geometry"))
+    try:
+        gps_latitude = float(payload.get("start_latitude"))
+        gps_longitude = float(payload.get("start_longitude"))
+        if math.isfinite(gps_latitude) and math.isfinite(gps_longitude):
+            origin_point = (gps_latitude, gps_longitude)
+    except (TypeError, ValueError):
+        pass
+    google_traffic = _google_traffic_route(origin_point, destination_point)
+    direct_area_values = payload.get("area_ids") or []
+    try:
+        direct_area_ids = {int(value) for value in direct_area_values if value not in (None, "")}
+    except (TypeError, ValueError):
+        direct_area_ids = set()
+    direct_areas = list(LocationArea.objects.filter(pk__in=direct_area_ids, active=True))
+    if len(direct_areas) != len(direct_area_ids):
+        return JsonResponse({"error": "Choose only active Uganda districts."}, status=400)
+    subscription = None
+    endpoint = str(payload.get("endpoint") or "").strip()
+    keys = payload.get("keys") or {}
+    if endpoint or keys:
+        try:
+            subscription = _upsert_public_alert_subscription(
+                request,
+                payload,
+                route_areas,
+                save_direct_areas=bool(direct_area_ids),
+                direct_areas=direct_areas,
+            )
+        except ValueError as error:
+            return JsonResponse({"error": str(error)}, status=400)
+
+    if subscription is not None:
+        plan = TravelSafetyPlan.objects.filter(subscription=subscription, active=True).first()
+        if plan is None:
+            plan = TravelSafetyPlan.objects.create(
+                subscription=subscription,
+                client_uuid=subscription.client_uuid,
+                origin_area=origin,
+                destination_area=destination,
+            )
+        else:
+            plan.origin_area = origin
+            plan.destination_area = destination
+            plan.client_uuid = subscription.client_uuid
+            plan.save(update_fields=["origin_area", "destination_area", "client_uuid", "updated_at"])
+        plan.route_areas.set(route_areas)
+    return JsonResponse({
+        "ok": True,
+        "watch_active": subscription is not None,
+        "plan_id": plan.pk if subscription is not None else None,
+        "origin": origin.name,
+        "destination": destination.name,
+        "route": [area.name for area in route_areas],
+        "route_map": route_map,
+        "traffic_provider": "Google" if getattr(settings, "GOOGLE_MAPS_API_KEY", "") else "OSRM",
+        "traffic_available": bool(google_traffic),
+        "google_traffic": google_traffic,
+        "message": (
+            "Travel watch active. You will receive opted-in safety alerts for this district corridor."
+            if subscription is not None
+            else "Route calculated. Enable browser alerts to receive safety notices along this corridor."
+        ),
+    })
+
+
+def travel_alert_stop(request: HttpRequest) -> JsonResponse:
+    if request.method != "POST":
+        return JsonResponse({"error": "Use POST to stop a travel safety watch."}, status=405)
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return JsonResponse({"error": "The travel watch request is invalid."}, status=400)
+    endpoint = str(payload.get("endpoint") or "").strip()
+    subscription = PublicAlertSubscription.objects.filter(
+        endpoint_hash=hashlib.sha256(endpoint.encode("utf-8")).hexdigest(),
+        active=True,
+    ).first() if endpoint.startswith("https://") else None
+    if subscription is None:
+        return JsonResponse({"error": "No active browser subscription was found."}, status=404)
+    TravelSafetyPlan.objects.filter(subscription=subscription, active=True).update(active=False, updated_at=timezone.now())
+    return JsonResponse({"ok": True})
+
+
+def public_alert_unsubscribe(request: HttpRequest) -> JsonResponse:
+    if request.method != "POST":
+        return JsonResponse({"error": "Use POST to unsubscribe from area alerts."}, status=405)
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return JsonResponse({"error": "The subscription payload is invalid."}, status=400)
+    endpoint = str(payload.get("endpoint", "")).strip()
+    if not endpoint.startswith("https://"):
+        return JsonResponse({"error": "The browser subscription is invalid."}, status=400)
+    PublicAlertSubscription.objects.filter(
+        endpoint_hash=hashlib.sha256(endpoint.encode("utf-8")).hexdigest(),
+    ).update(active=False, last_seen_at=timezone.now())
+    return JsonResponse({"ok": True})
 
 
 def submit_success(request: HttpRequest) -> HttpResponse:
@@ -573,19 +1024,53 @@ def _active_emergency_chat_room(incident):
 
 
 def _activate_emergency_chat_room(room):
-    if room is None or room.accepted_at is not None:
+    if room is None:
         return room
-    activated_at = timezone.now()
-    updated = EmergencyChatRoom.objects.filter(
-        pk=room.pk,
-        accepted_at__isnull=True,
-    ).update(accepted_at=activated_at, updated_at=activated_at)
-    if updated:
-        room.accepted_at = activated_at
-        room.updated_at = activated_at
-    else:
-        room.refresh_from_db(fields=["accepted_at", "updated_at"])
+    if room.accepted_at is None:
+        activated_at = timezone.now()
+        updated = EmergencyChatRoom.objects.filter(
+            pk=room.pk,
+            accepted_at__isnull=True,
+        ).update(accepted_at=activated_at, updated_at=activated_at)
+        if updated:
+            room.accepted_at = activated_at
+            room.updated_at = activated_at
+        else:
+            room.refresh_from_db(fields=["accepted_at", "updated_at"])
+    _seed_emergency_chat_messages(room)
     return room
+
+
+def _seed_emergency_chat_messages(room):
+    incident = room.incident
+    case_request = incident.request
+    if case_request.latitude is not None and case_request.longitude is not None:
+        follow_up = (
+            "Please reply with what is happening now, whether you are safe, "
+            "and any nearby landmark that will help the response team find you."
+        )
+    else:
+        follow_up = (
+            "We do not have a confirmed GPS position yet. Please reply with what is happening now, "
+            "your district or nearby landmark, whether you are safe, and the best way to reach you."
+        )
+    messages = (
+        (
+            f"emergency-system-greeting-{room.pk}",
+            "Hello. You are now connected to Rapid Response. A responder has been notified and will review your emergency report.",
+        ),
+        (f"emergency-system-follow-up-{room.pk}", follow_up),
+    )
+    for idempotency_key, body in messages:
+        EmergencyChatMessage.objects.get_or_create(
+            idempotency_key=idempotency_key,
+            defaults={
+                "room": room,
+                "sender_type": "system",
+                "channel": "system",
+                "body": body,
+            },
+        )
 
 
 def _can_access_emergency_chat(request, incident):
@@ -645,6 +1130,7 @@ def _emergency_chat_json(room, request, sender_type):
                 "id": item.pk,
                 "body": item.body,
                 "channel": item.channel,
+                "sender_type": item.sender_type,
                 "audio_url": (
                     f"{reverse('emergency_chat_audio', args=[item.pk])}"
                     f"?access={quote_plus(request.GET.get('access', ''))}"
@@ -661,7 +1147,7 @@ def _emergency_chat_json(room, request, sender_type):
                 "attachment_size": item.attachment_size,
                 "audio_duration": item.audio_duration_seconds,
                 "mine": item.sender_type == sender_type,
-                "sender": "You" if item.sender_type == sender_type else ("Response team" if item.sender_type == "admin" else "Request sender"),
+                "sender": "You" if item.sender_type == sender_type else ("Rapid Response" if item.sender_type == "system" else "Response team" if item.sender_type == "admin" else "Request sender"),
                 "created_at": timezone.localtime(item.created_at).strftime("%d %b %Y · %H:%M"),
             }
             for item in messages_for_room
@@ -727,9 +1213,7 @@ def emergency_chat(request: HttpRequest, incident_id: int) -> HttpResponse:
         if action == "accept":
             if sender_type != "public":
                 return JsonResponse({"error": "Only the request sender can accept this chat."}, status=403)
-            if room.accepted_at is None:
-                room.accepted_at = timezone.now()
-                room.save(update_fields=["accepted_at", "updated_at"])
+            _activate_emergency_chat_room(room)
         elif action == "message":
             if room.accepted_at is None:
                 return JsonResponse({"error": "Accept the chat invitation before sending a message."}, status=409)
@@ -1061,6 +1545,12 @@ def _dashboard_inactive_redirect(request):
 def dashboard_logout(request: HttpRequest) -> HttpResponse:
     logout(request)
     return redirect("dashboard_login")
+
+
+def workspace_keepalive(request: HttpRequest) -> JsonResponse:
+    if not request.user.is_authenticated or not request.user.is_active:
+        return JsonResponse({"error": "Your workspace session is no longer active."}, status=401)
+    return JsonResponse({"ok": True})
 
 
 def _can_access_dashboard(user):
@@ -1696,10 +2186,207 @@ def dashboard_home(request: HttpRequest) -> HttpResponse:
     return dashboard_area_activity(request)
 
 
+def _public_alert_areas(user):
+    if _is_parent_admin(user):
+        return LocationArea.objects.filter(active=True)
+    return user.response_profile.areas.filter(active=True)
+
+
+def _public_alert_incidents(user, area, issue_type=""):
+    incidents = _visible_incidents(user).filter(
+        assigned_area=area,
+        status__in=["new", "acknowledged", "responding"],
+    )
+    if issue_type and issue_type != "all":
+        incidents = incidents.filter(request__emergency_type=issue_type)
+    return incidents
+
+
+def _public_alert_metrics(user):
+    type_labels = dict(EmergencyRequest.EMERGENCY_TYPES)
+    metrics = []
+    for area in _public_alert_areas(user):
+        area_incidents = list(_public_alert_incidents(user, area).select_related("request"))
+        issue_counts = {}
+        for incident in area_incidents:
+            issue_counts[incident.request.emergency_type] = issue_counts.get(incident.request.emergency_type, 0) + 1
+        issue_options = [
+            {
+                "value": issue_type,
+                "label": type_labels.get(issue_type, issue_type.title()),
+                "count": count,
+            }
+            for issue_type, count in sorted(issue_counts.items(), key=lambda item: (-item[1], type_labels.get(item[0], item[0])))
+        ]
+        leading_issue = issue_options[0] if issue_options else None
+        metrics.append({
+            "id": area.pk,
+            "name": area.name,
+            "count": len(area_incidents),
+            "leading_issue": leading_issue,
+            "issues": issue_options,
+        })
+    return metrics
+
+
+def _send_public_area_alert(alert, request):
+    vapid_private_key = settings.WEBPUSH_VAPID_PRIVATE_KEY
+    vapid_subject = settings.WEBPUSH_VAPID_SUBJECT
+    if not vapid_private_key or not settings.WEBPUSH_VAPID_PUBLIC_KEY or not vapid_subject:
+        return "not_configured", 0, 0, "Web Push is not configured yet. The alert is saved for the audit log."
+    try:
+        from pywebpush import webpush
+        from py_vapid import Vapid
+    except ImportError:
+        logger.error("pywebpush is not installed; public area alerts cannot be delivered.")
+        return "not_configured", 0, 0, "Install the Web Push dependency before sending public alerts."
+
+    try:
+        if os.path.isfile(vapid_private_key):
+            vapid = Vapid.from_file(private_key_file=vapid_private_key)
+        else:
+            vapid = Vapid.from_string(private_key=vapid_private_key)
+        public_numbers = vapid.public_key.public_numbers()
+        derived_public_key = base64.urlsafe_b64encode(
+            b"\x04"
+            + public_numbers.x.to_bytes(32, "big")
+            + public_numbers.y.to_bytes(32, "big")
+        ).rstrip(b"=").decode()
+    except Exception:
+        logger.exception("The configured Web Push VAPID private key is invalid.")
+        return "not_configured", 0, 0, "The Web Push private key is invalid. Check the VAPID environment variables."
+
+    if derived_public_key != settings.WEBPUSH_VAPID_PUBLIC_KEY:
+        logger.error("The configured Web Push VAPID public and private keys do not match.")
+        return "not_configured", 0, 0, "The Web Push public and private keys do not match. Replace them with one matching VAPID key pair."
+
+    payload = json.dumps({
+        "title": alert.title,
+        "body": alert.body,
+        "severity": "critical",
+        "area": alert.area.name,
+        "alert_id": alert.pk,
+        "created_at": alert.created_at.isoformat(),
+        "expires_at": (alert.created_at + PUBLIC_ALERT_LIFETIME).isoformat(),
+        "url": request.build_absolute_uri(reverse("public_area_alert_detail", args=[alert.pk])),
+    })
+    sent_count = 0
+    failed_count = 0
+    failure_message = ""
+    recipient_subscriptions = PublicAlertSubscription.objects.filter(
+        active=True,
+    ).filter(
+        Q(receives_area_alerts=True, area=alert.area)
+        | Q(receives_area_alerts=True, notification_areas=alert.area)
+        | Q(travel_plans__route_areas=alert.area, travel_plans__active=True),
+    ).distinct()
+    for subscription in recipient_subscriptions.iterator():
+        subscription_info = {
+            "endpoint": subscription.endpoint,
+            "keys": {
+                "p256dh": subscription.p256dh,
+                "auth": subscription.auth,
+            },
+        }
+        try:
+            webpush(
+                subscription_info=subscription_info,
+                data=payload,
+                vapid_private_key=vapid,
+                vapid_claims={"sub": vapid_subject},
+                headers={"Urgency": "high"},
+                ttl=int(PUBLIC_ALERT_LIFETIME.total_seconds()),
+                timeout=10,
+            )
+            sent_count += 1
+        except Exception as error:  # Web Push providers return different exception types.
+            failed_count += 1
+            response = getattr(error, "response", None)
+            status_code = getattr(response, "status_code", None)
+            if status_code in {404, 410}:
+                subscription.active = False
+                subscription.save(update_fields=["active", "last_seen_at"])
+                failure_message = "A subscribed browser is no longer available and was removed. Ask that person to subscribe again."
+            elif status_code in {401, 403}:
+                failure_message = "The push provider rejected the VAPID credentials. Check that the public and private keys match."
+            elif status_code:
+                failure_message = f"The push provider returned HTTP {status_code}. Try again shortly."
+            else:
+                failure_message = "The push provider could not be reached. Check the server network connection and try again."
+            logger.warning(
+                "Public area alert delivery failed for subscription %s (HTTP %s): %s",
+                subscription.pk,
+                status_code or "connection error",
+                error,
+            )
+
+    if sent_count == 0 and failed_count == 0:
+        return "no_subscribers", 0, 0, "Alert saved, but no people in this district have opted in to browser alerts."
+    if sent_count and failed_count:
+        return "partial", sent_count, failed_count, f"Alert delivered to {sent_count} subscribed browser(s); {failed_count} subscription(s) failed. {failure_message}"
+    if failed_count:
+        return "failed", 0, failed_count, failure_message or "The alert could not be delivered to the subscribed browsers."
+    return "sent", sent_count, 0, f"Alert delivered to {sent_count} subscribed browser(s)."
+
+
+def _create_public_area_alert(request, user):
+    try:
+        area_id = int(request.POST.get("alert_area", ""))
+    except (TypeError, ValueError):
+        messages.error(request, "Choose a district before sending an area alert.")
+        return
+    area = _public_alert_areas(user).filter(pk=area_id).first()
+    if area is None:
+        messages.error(request, "You can only send alerts to a district assigned to your account.")
+        return
+    issue_type = request.POST.get("alert_issue_type", "all").strip().lower()
+    valid_issue_types = {value for value, _ in EmergencyRequest.EMERGENCY_TYPES}
+    if issue_type != "all" and issue_type not in valid_issue_types:
+        messages.error(request, "Choose a valid emergency issue group.")
+        return
+    alert_incidents = _public_alert_incidents(user, area, issue_type)
+    case_count = alert_incidents.count()
+    title = request.POST.get("alert_title", "").strip()[:120]
+    body = request.POST.get("alert_body", "").strip()[:600]
+    if not title or not body:
+        messages.error(request, "Add a short alert title and public safety message.")
+        return
+    idempotency_key = _write_idempotency_key(request, "public-area-alert", area.pk, issue_type)
+    existing_alert = AreaAlert.objects.filter(idempotency_key=idempotency_key).first()
+    if existing_alert:
+        messages.info(request, "This area alert was already recorded.")
+        return
+    alert = AreaAlert.objects.create(
+        area=area,
+        created_by=user,
+        title=title,
+        body=body,
+        issue_type="" if issue_type == "all" else issue_type,
+        case_count_snapshot=case_count,
+        idempotency_key=idempotency_key,
+    )
+    delivery_status, recipient_count, failed_count, delivery_message = _send_public_area_alert(alert, request)
+    alert.delivery_status = delivery_status
+    alert.recipient_count = recipient_count
+    alert.failed_count = failed_count
+    alert.sent_at = timezone.now()
+    alert.save(update_fields=["delivery_status", "recipient_count", "failed_count", "sent_at"])
+    if delivery_status in {"sent", "partial"}:
+        messages.success(request, delivery_message)
+    else:
+        messages.warning(request, delivery_message)
+
+
 @login_required
 def dashboard_global_map(request: HttpRequest) -> HttpResponse:
     if not _can_access_dashboard(request.user):
         return _dashboard_inactive_redirect(request)
+    if request.method == "POST" and request.POST.get("action") == "send_area_alert":
+        if _rate_limited(request, "public-area-alert", limit=5, window=300):
+            messages.error(request, "Please wait before sending another area alert.")
+        else:
+            _create_public_area_alert(request, request.user)
+        return redirect("dashboard_global_map")
     if _is_parent_admin(request.user):
         areas = LocationArea.objects.filter(active=True)
     else:
@@ -1740,6 +2427,14 @@ def dashboard_global_map(request: HttpRequest) -> HttpResponse:
         "handled_case_count": incidents.count(),
         "selected_case": selected_case,
         "tracking_endpoint": reverse("dashboard_incident_location", args=[selected_case.pk]) if selected_case else "",
+        "alert_metrics": _public_alert_metrics(request.user),
+        "alert_history": AreaAlert.objects.filter(area__in=_public_alert_areas(request.user)).select_related("area", "created_by")[:5],
+        "emergency_types": EmergencyRequest.EMERGENCY_TYPES,
+        "webpush_configured": bool(
+            settings.WEBPUSH_VAPID_PUBLIC_KEY
+            and settings.WEBPUSH_VAPID_PRIVATE_KEY
+            and settings.WEBPUSH_VAPID_SUBJECT
+        ),
     })
 
 

@@ -5,22 +5,28 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ profile.institution_name }} · Rapid Response</title>
   <link rel="stylesheet" href="{% static 'css/institution.css' %}?v=20261009">
+  <link rel="stylesheet" href="{% static 'css/institution-dark.css' %}?v=20261022-portal-ui">
+  <link rel="stylesheet" href="{% static 'css/dashboard/report-builder.css' %}?v=20261022-portal-ui">
 </head>
-<body class="institution-page" data-session-lock-url="{% url 'institution_logout' %}">
+<body class="institution-page" data-session-lock-url="{% url 'institution_logout' %}" data-session-keepalive-url="{% url 'workspace_keepalive' %}">
   <header class="institution-topbar">
     <a class="institution-brand" href="{% url 'institution_portal' %}"><img class="institution-brand-logo" src="{% static 'Rapid Response Emergency Logo.png' %}" alt="" width="40" height="40"><span class="institution-brand-name">Rapid<span>Response</span></span></a>
     <div class="institution-identity"><strong class="institution-identity-name">{{ profile.institution_name }}</strong><small>{{ profile.get_institution_type_display }} · {{ profile.area.name }}</small></div>
-    <a class="institution-signout" href="{% url 'institution_logout' %}">Sign out</a>
+    <div class="institution-topbar-actions">
+      <button class="theme-toggle institution-theme-toggle" data-theme-toggle type="button" aria-label="Toggle dark mode" aria-pressed="false"><span class="theme-toggle-icon institution-theme-toggle-icon" aria-hidden="true">☾</span><span class="theme-toggle-label institution-theme-toggle-label">Dark mode</span></button>
+      <button class="report-open-button institution-report-open" data-report-open type="button" aria-haspopup="dialog"><span aria-hidden="true">▤</span><span>Print report</span></button>
+      <a class="institution-signout" href="{% url 'institution_logout' %}">Sign out</a>
+    </div>
   </header>
-  <main class="institution-shell">
-    <div class="institution-heading"><div><p class="institution-kicker">{{ profile.area.name }} response desk</p><h1>Case workspace</h1><p>Review forwarded emergencies, reply to the sender, and coordinate the next action.</p></div><div class="institution-heading-actions"><a class="institution-map-button" href="{% url 'institution_global_map' %}">Global case map ↗</a><div class="institution-status"><i></i> Portal online</div></div></div>
-    <nav class="institution-tabs" aria-label="Case views">
+  <main class="institution-shell" data-report-root>
+    <div class="institution-heading" data-report-section data-report-label="Portal summary"><div><p class="institution-kicker">{{ profile.area.name }} response desk</p><h1>Case workspace</h1><p>Review forwarded emergencies, reply to the sender, and coordinate the next action.</p></div><div class="institution-heading-actions"><a class="institution-map-button" href="{% url 'institution_global_map' %}">Global case map ↗</a><div class="institution-status"><i></i> Portal online</div></div></div>
+    <nav class="institution-tabs" data-report-section data-report-label="Case counters" aria-label="Case views">
       <a class="{% if tab == 'forwarded' %}active{% endif %}" href="?tab=forwarded"><span>Forwarded cases</span><b>{{ counts.forwarded }}</b></a>
       <a class="{% if tab == 'new' %}active{% endif %}" href="?tab=new"><span>New cases</span><b>{{ counts.new }}</b></a>
       <a class="{% if tab == 'archive' %}active{% endif %}" href="?tab=archive"><span>Archive</span><b>{{ counts.archive }}</b></a>
     </nav>
     {% if force_password_change %}<section class="institution-password-panel"><p class="institution-kicker">First sign-in required</p><h2>Set a private institution passcode</h2><p>The temporary passcode is shared only for account setup. Change it before opening cases.</p>{% if password_error %}<div class="institution-error">{{ password_error }}</div>{% endif %}<form method="post" class="institution-password-form">{% csrf_token %}<input type="hidden" name="action" value="change_password"><label for="new-password">New passcode</label><input id="new-password" name="new_password" type="password" minlength="8" required><label for="new-password-confirmation">Confirm new passcode</label><input id="new-password-confirmation" name="new_password_confirmation" type="password" minlength="8" required><button class="institution-button" type="submit">Save private passcode <span>→</span></button></form></section>{% endif %}
-    <section class="institution-case-list">
+    <section class="institution-case-list" data-report-section data-report-label="Forwarded case list">
       {% if referrals %}
         {% for referral in referrals %}
         <a class="institution-case-row{% if not referral.read_at %} unread{% endif %}" href="{% url 'institution_case' referral.pk %}">
@@ -34,6 +40,9 @@
       {% endif %}
     </section>
   </main>
+  {% include "institution/report_dialog.html" %}
 </body>
-<script src="{% static 'js/session-activity.js' %}?v=20261002"></script>
+<script src="{% static 'js/session-activity.js' %}?v=20261022-session-keepalive"></script>
+<script src="{% static 'js/theme-toggle.js' %}?v=20261022-portal-ui"></script>
+<script src="{% static 'js/report-builder.js' %}?v=20261022-portal-ui"></script>
 </html>

@@ -127,6 +127,8 @@ The dashboard can show:
 - Other cases handled by the responder.
 - Uganda district boundary information.
 
+On the travel-watch page, the server can use Google's traffic-aware Routes API to calculate the road distance, drive time, and traffic delay from the traveller's GPS position to the destination. The map labels conditions as light, moderate, or heavy and shows the delay. If `GOOGLE_MAPS_API_KEY` is not configured or Google cannot respond, the page clearly falls back to an approximate route instead of inventing traffic data.
+
 ### Quick video help
 
 Someone in danger may not have time to type. The quick video page gives them a large record button. It can use the front or back camera, record a short clip, and send the video with the emergency request.
@@ -143,6 +145,14 @@ The chat system supports:
 - Microphone status, mute, speaker, answer, decline, and end-call controls.
 
 Voice calls require HTTPS, microphone permission, and a working ASGI/WebSocket service. A TURN server is recommended for production networks where two phones cannot connect directly.
+
+The application reads the browser ICE server list from `RTC_ICE_SERVERS`. Keep the public STUN entry and add a TURN entry with a short-lived username and credential, for example:
+
+```text
+RTC_ICE_SERVERS=[{"urls":["stun:stun.l.google.com:19302"]},{"urls":["turn:turn.example.com:3478"],"username":"temporary-user","credential":"temporary-password"}]
+```
+
+The TURN credential is sent to the browser because WebRTC needs it to relay audio; use temporary credentials and rotate them. Django Channels carries call signaling, while the media travels directly between browsers or through TURN when direct routing is unavailable.
 
 ### Referrals
 
@@ -265,6 +275,7 @@ Open these pages:
 | Purpose | Address |
 | --- | --- |
 | Public emergency page | `http://127.0.0.1:8000/` |
+| Safety alerts and travel watch | `http://127.0.0.1:8000/alerts/` |
 | Quick video help | `http://127.0.0.1:8000/quick-help/` |
 | Responder login | `http://127.0.0.1:8000/dashboard/login/` |
 | Main administration | `http://127.0.0.1:8000/admin/` |
@@ -345,3 +356,13 @@ These improvements do not weaken the project. They show that the team understand
 - **Idempotency:** A safety rule that prevents one action from being saved twice.
 - **ASGI:** The server interface needed for Django Channels and live WebSockets.
 - **TURN:** A relay service that helps voice calls connect when direct connection fails.
+
+## 15. Community area alerts
+
+The global case map includes a protected **Send an area alert** panel. A responder chooses an assigned district, selects an issue group, and writes a public-safe message. Authorized responders can send a verified warning immediately, even before several similar cases are recorded, so an early security issue can reach opted-in residents quickly.
+
+Residents must opt in from the public emergency page and choose the district where they want alerts. The system stores the browser push subscription for that district, not an exact home location. Alerts never include names, phone numbers, case references, or exact incident coordinates.
+
+The **Safety alerts and travel watch** page lets a subscriber save several districts, such as home and work. A traveller can use GPS for the starting point and choose a destination district; the system builds an alert corridor from the Uganda boundary data. When configured, Google traffic-aware routing supplies the road line, distance, drive time, and congestion delay. This remains a safety-watch route rather than guaranteed turn-by-turn navigation, so travellers must still confirm their actual road route.
+
+The project uses the browser Web Push standard with VAPID keys. It is the lowest-cost option because it does not require SMS or WhatsApp fees. It requires HTTPS, browser permission, a service worker, and `WEBPUSH_VAPID_PUBLIC_KEY`, `WEBPUSH_VAPID_PRIVATE_KEY`, and `WEBPUSH_VAPID_SUBJECT` environment variables. If push is not configured, the alert is still recorded in the audit log and the dashboard explains that delivery is unavailable.

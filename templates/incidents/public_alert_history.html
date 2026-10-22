@@ -1,0 +1,44 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sent Public Notifications | Rapid Response</title>
+  <link rel="stylesheet" href="{% static 'css/site.css' %}?v=20261022-public-alert-history">
+  <link rel="stylesheet" href="{% static 'css/public-alerts.css' %}?v=20261022-public-alerts">
+</head>
+<body class="page-public-alert-history">
+  <header class="public-motto-header"><span>Saving lives is better.</span></header>
+  <main class="public-alert-history-shell">
+    <a class="public-alert-history-back" href="{% url 'home' %}">← Back to emergency assistance</a>
+    <section class="public-alert-history-hero">
+      <p class="eyebrow">Community safety network</p>
+      <h1>Sent public notifications</h1>
+      <p>Recent official safety notices sent to subscribed browsers. Notices remain visible here for four hours.</p>
+    </section>
+
+    {% if alerts %}
+      <section class="public-alert-history-list" aria-label="Recent public notifications">
+        {% for alert in alerts %}
+          <a class="public-alert-history-item" href="{% url 'public_area_alert_detail' alert.pk %}">
+            <span class="public-alert-history-icon" aria-hidden="true">⚠</span>
+            <span class="public-alert-history-content">
+              <span class="public-alert-history-meta"><strong>{{ alert.area.name }}</strong><time datetime="{{ alert.created_at|date:'c' }}">{{ alert.created_at|date:"j M Y, H:i" }}</time></span>
+              <strong class="public-alert-history-title">{{ alert.title }}</strong>
+              <span class="public-alert-history-body">{{ alert.body|truncatechars:180 }}</span>
+            </span>
+            <span class="public-alert-history-open">Open →</span>
+          </a>
+        {% endfor %}
+      </section>
+    {% else %}
+      <section class="public-alert-history-empty">
+        <span class="public-alert-history-empty-icon" aria-hidden="true">✓</span>
+        <h2>No recent public notifications</h2>
+        <p>Official district safety notices will appear here while they are active.</p>
+      </section>
+    {% endif %}
+  </main>
+</body>
+</html>

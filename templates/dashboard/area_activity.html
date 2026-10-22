@@ -20,45 +20,10 @@
 <div class="area-operations-top">
 <div class="overview-grid overview-shell area-page-card-shell" data-report-section data-report-label="Overview metrics">
 <section class="stat-grid">
-  {% if stats.active >= 8 %}
-  <a class="stat-card stat-link severity-critical" href="{% url 'dashboard_incoming' %}"><div class="stat-icon red">!</div><div><small>Active incidents</small><strong>{{ stats.active }}</strong><span class="stat-note">Open incoming cases <b>→</b></span></div></a>
-  {% elif stats.active >= 4 %}
-  <a class="stat-card stat-link severity-high" href="{% url 'dashboard_incoming' %}"><div class="stat-icon red">!</div><div><small>Active incidents</small><strong>{{ stats.active }}</strong><span class="stat-note">Open incoming cases <b>→</b></span></div></a>
-  {% elif stats.active >= 1 %}
-  <a class="stat-card stat-link severity-medium" href="{% url 'dashboard_incoming' %}"><div class="stat-icon red">!</div><div><small>Active incidents</small><strong>{{ stats.active }}</strong><span class="stat-note">Open incoming cases <b>→</b></span></div></a>
-  {% else %}
-  <a class="stat-card stat-link severity-low" href="{% url 'dashboard_incoming' %}"><div class="stat-icon red">!</div><div><small>Active incidents</small><strong>{{ stats.active }}</strong><span class="stat-note">Open incoming cases <b>→</b></span></div></a>
-  {% endif %}
-
-  {% if stats.critical >= 5 %}
-  <a class="stat-card stat-link severity-critical" href="{% url 'dashboard_incoming' %}?priority=critical"><div class="stat-icon orange">!</div><div><small>Critical priority</small><strong>{{ stats.critical }}</strong><span class="stat-note">View critical cases <b>→</b></span></div></a>
-  {% elif stats.critical >= 2 %}
-  <a class="stat-card stat-link severity-high" href="{% url 'dashboard_incoming' %}?priority=critical"><div class="stat-icon orange">!</div><div><small>Critical priority</small><strong>{{ stats.critical }}</strong><span class="stat-note">View critical cases <b>→</b></span></div></a>
-  {% elif stats.critical >= 1 %}
-  <a class="stat-card stat-link severity-medium" href="{% url 'dashboard_incoming' %}?priority=critical"><div class="stat-icon orange">!</div><div><small>Critical priority</small><strong>{{ stats.critical }}</strong><span class="stat-note">View critical cases <b>→</b></span></div></a>
-  {% else %}
-  <a class="stat-card stat-link severity-low" href="{% url 'dashboard_incoming' %}?priority=critical"><div class="stat-icon orange">!</div><div><small>Critical priority</small><strong>{{ stats.critical }}</strong><span class="stat-note">View critical cases <b>→</b></span></div></a>
-  {% endif %}
-
-  {% if stats.new >= 8 %}
-  <a class="stat-card stat-link severity-critical" href="{% url 'dashboard_incoming' %}?view=unopened"><div class="stat-icon blue">↗</div><div><small>New requests</small><strong>{{ stats.new }}</strong><span class="stat-note">View unopened cases <b>→</b></span></div></a>
-  {% elif stats.new >= 4 %}
-  <a class="stat-card stat-link severity-high" href="{% url 'dashboard_incoming' %}?view=unopened"><div class="stat-icon blue">↗</div><div><small>New requests</small><strong>{{ stats.new }}</strong><span class="stat-note">View unopened cases <b>→</b></span></div></a>
-  {% elif stats.new >= 1 %}
-  <a class="stat-card stat-link severity-medium" href="{% url 'dashboard_incoming' %}?view=unopened"><div class="stat-icon blue">↗</div><div><small>New requests</small><strong>{{ stats.new }}</strong><span class="stat-note">View unopened cases <b>→</b></span></div></a>
-  {% else %}
-  <a class="stat-card stat-link severity-low" href="{% url 'dashboard_incoming' %}?view=unopened"><div class="stat-icon blue">↗</div><div><small>New requests</small><strong>{{ stats.new }}</strong><span class="stat-note">View unopened cases <b>→</b></span></div></a>
-  {% endif %}
-
-  {% if stats.resolved >= 8 %}
-  <a class="stat-card stat-link severity-critical" href="{% url 'dashboard_cases' %}?status=resolved"><div class="stat-icon green">✓</div><div><small>Resolved today</small><strong>{{ stats.resolved }}</strong><span class="stat-note">View resolved cases <b>→</b></span></div></a>
-  {% elif stats.resolved >= 4 %}
-  <a class="stat-card stat-link severity-high" href="{% url 'dashboard_cases' %}?status=resolved"><div class="stat-icon green">✓</div><div><small>Resolved today</small><strong>{{ stats.resolved }}</strong><span class="stat-note">View resolved cases <b>→</b></span></div></a>
-  {% elif stats.resolved >= 1 %}
-  <a class="stat-card stat-link severity-medium" href="{% url 'dashboard_cases' %}?status=resolved"><div class="stat-icon green">✓</div><div><small>Resolved today</small><strong>{{ stats.resolved }}</strong><span class="stat-note">View resolved cases <b>→</b></span></div></a>
-  {% else %}
-  <a class="stat-card stat-link severity-low" href="{% url 'dashboard_cases' %}?status=resolved"><div class="stat-icon green">✓</div><div><small>Resolved today</small><strong>{{ stats.resolved }}</strong><span class="stat-note">View resolved cases <b>→</b></span></div></a>
-  {% endif %}
+  <a class="stat-card stat-link metric-red" href="{% url 'dashboard_incoming' %}"><div class="stat-icon red">!</div><div><small>Active incidents</small><strong>{{ stats.active }}</strong><span class="stat-note">Open incoming cases <b>→</b></span></div></a>
+  <a class="stat-card stat-link metric-orange" href="{% url 'dashboard_incoming' %}?priority=critical"><div class="stat-icon orange">!</div><div><small>Critical priority</small><strong>{{ stats.critical }}</strong><span class="stat-note">View critical cases <b>→</b></span></div></a>
+  <a class="stat-card stat-link metric-sky" href="{% url 'dashboard_incoming' %}?view=unopened"><div class="stat-icon blue">↗</div><div><small>New requests</small><strong>{{ stats.new }}</strong><span class="stat-note">View unopened cases <b>→</b></span></div></a>
+  <a class="stat-card stat-link metric-green" href="{% url 'dashboard_cases' %}?status=resolved"><div class="stat-icon green">✓</div><div><small>Resolved today</small><strong>{{ stats.resolved }}</strong><span class="stat-note">View resolved cases <b>→</b></span></div></a>
 </section>
 </div>
 <section class="map-panel" data-report-section data-report-label="Incident map"><div class="panel-heading"><div><h2>Incident map</h2><p>Start from the national view, then tap any case marker to fly directly to its GPS location.</p></div><div class="map-panel-actions"><span class="map-key"><i class="map-key-dot"></i>Reported location</span><a class="map-global-link" href="{% url 'dashboard_global_map' %}">Open global map <span>↗</span></a></div></div><div class="map-wrap"><div id="incident-map"></div>{% if map_points %}<div class="map-dive-modal" data-map-dive-modal role="dialog" aria-modal="true" aria-labelledby="map-dive-title"><div class="map-dive-dialog"><span class="map-dive-kicker">Live response map</span><strong id="map-dive-title">Dive into case locations?</strong><p>Would you like to zoom from the national view into the reported emergency locations?</p><div class="map-dive-actions"><button class="map-dive-accept" data-map-dive-accept type="button">Yes, dive in <span>→</span></button><button class="map-dive-later" data-map-dive-later type="button">Not now</button></div></div></div>{% endif %}<div class="map-journey-hint"><span class="map-journey-dot"></span><span>Tap a marker to inspect the exact location</span></div>{% if not map_points %}<div class="map-empty"><strong>Location not tagged</strong><span>No GPS coordinates are available for this view.</span></div>{% endif %}</div></section>
@@ -216,17 +181,16 @@
 {{ area_chart_data|json_script:"area-activity-chart-data" }}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js" crossorigin="anonymous"></script>
 <script src="{% static 'js/area-activity-chart.js' %}?v=20261014"></script>
+<script src="{% static 'js/overview-sparklines.js' %}?v=20261021"></script>
 <script>
   const areaMapPoints = JSON.parse(document.getElementById('map-points').textContent);
   const areaMapBoundaries = JSON.parse(document.getElementById('district-boundaries').textContent);
   const areaMap = L.map('incident-map', {zoomControl: false, preferCanvas: true}).setView([1.0000, 32.0000], 2);
   const areaStreetLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 19, attribution: '&copy; OpenStreetMap contributors'});
   const areaSatelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {maxZoom: 19, attribution: '&copy; Esri, Maxar, Earthstar Geographics'});
-  const areaStreetNamesLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}', {maxZoom: 19, opacity: .9, attribution: '&copy; Esri'});
   areaSatelliteLayer.addTo(areaMap);
-  areaStreetNamesLayer.addTo(areaMap);
   L.control.zoom({position: 'bottomright'}).addTo(areaMap);
-  L.control.layers({'Street map': areaStreetLayer, 'Satellite': areaSatelliteLayer}, {'Street names': areaStreetNamesLayer}, {position: 'topright', collapsed: false}).addTo(areaMap);
+  L.control.layers({'Street map': areaStreetLayer, 'Satellite': areaSatelliteLayer}, {}, {position: 'topright', collapsed: false}).addTo(areaMap);
   window.setTimeout(() => areaMap.flyTo([1.0000, 32.0000], 6, {duration: 3.1, easeLinearity: 0.2}), 700);
   const areaIncidentCounts = areaMapPoints.reduce((counts, point) => {
     counts[point.area] = (counts[point.area] || 0) + 1;

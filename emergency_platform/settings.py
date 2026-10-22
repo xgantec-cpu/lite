@@ -1,11 +1,14 @@
 import base64
 import hashlib
+import json
 import os
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
 from django.contrib.auth.hashers import make_password
 from django.core.exceptions import ImproperlyConfigured
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ec
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -32,8 +35,74 @@ CSRF_TRUSTED_ORIGINS = [
     for origin in os.getenv("DJANGO_CSRF_TRUSTED_ORIGINS", "").split(",")
     if origin.strip()
 ]
-TRUST_PROXY_HEADERS = os.getenv("DJANGO_TRUST_PROXY_HEADERS", "0") == "1"
+TRUST_PROXY_HEADERS = os.getenv(
+    "DJANGO_TRUST_PROXY_HEADERS",
+    "1" if not DEBUG else "0",
+) == "1"
 
+
+def _development_vapid_keypair():
+    curve_order = int(
+        "FFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551",
+        16,
+    )
+    seed = hashlib.sha256(f"{SECRET_KEY}:development-vapid".encode()).digest()
+    private_value = int.from_bytes(seed, "big") % (curve_order - 1) + 1
+    private_key = ec.derive_private_key(private_value, ec.SECP256R1())
+    public_numbers = private_key.public_key().public_numbers()
+    public_bytes = (
+        b"\x04"
+        + public_numbers.x.to_bytes(32, "big")
+        + public_numbers.y.to_bytes(32, "big")
+    )
+    public_key = base64.urlsafe_b64encode(public_bytes).rstrip(b"=").decode()
+    private_key = base64.b64encode(
+        private_key.private_bytes(
+            serialization.Encoding.DER,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        )
+    ).decode()
+    return public_key, private_key
+
+
+if DEBUG:
+    _DEVELOPMENT_VAPID_PUBLIC_KEY, _DEVELOPMENT_VAPID_PRIVATE_KEY = _development_vapid_keypair()
+else:
+    _DEVELOPMENT_VAPID_PUBLIC_KEY = ""
+    _DEVELOPMENT_VAPID_PRIVATE_KEY = ""
+
+
+def _normalise_vapid_public_key(value):
+    value = str(value or "").strip().strip("\"'").replace("\n", "").replace("\r", "")
+    value = value.replace("+", "-").replace("/", "_").rstrip("=")
+    if not value:
+        return ""
+    try:
+        padding = "=" * ((4 - len(value) % 4) % 4)
+        decoded = base64.urlsafe_b64decode(value + padding)
+    except (ValueError, base64.binascii.Error):
+        return ""
+    return value if len(decoded) == 65 and decoded[:1] == b"\x04" else ""
+
+
+def _clean_vapid_value(value):
+    return str(value or "").strip().strip("\"'")
+
+
+WEBPUSH_VAPID_PUBLIC_KEY = _normalise_vapid_public_key(os.getenv(
+    "WEBPUSH_VAPID_PUBLIC_KEY",
+    _DEVELOPMENT_VAPID_PUBLIC_KEY,
+))
+WEBPUSH_VAPID_PRIVATE_KEY = _clean_vapid_value(os.getenv(
+    "WEBPUSH_VAPID_PRIVATE_KEY",
+    _DEVELOPMENT_VAPID_PRIVATE_KEY,
+))
+WEBPUSH_VAPID_SUBJECT = os.getenv(
+    "WEBPUSH_VAPID_SUBJECT",
+    "mailto:alerts@example.org",
+).strip().strip("\"'")
+GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY", "").strip()
 INSTALLED_APPS = [
     "daphne",
     "channels",
@@ -155,6 +224,37 @@ else:
     CHANNEL_LAYERS = {
         "default": {"BACKEND": "channels.layers.InMemoryChannelLayer"},
     }
+
+
+def _rtc_ice_servers():
+    default_servers = [{"urls": ["stun:stun.l.google.com:19302"]}]
+    raw_servers = os.getenv("RTC_ICE_SERVERS", "").strip()
+    if not raw_servers:
+        return default_servers
+    try:
+        servers = json.loads(raw_servers)
+    except (TypeError, ValueError):
+        servers = None
+    if not isinstance(servers, list) or not servers:
+        return default_servers
+    valid_servers = []
+    for server in servers:
+        if not isinstance(server, dict):
+            continue
+        urls = server.get("urls")
+        if isinstance(urls, str):
+            urls = [urls]
+        if not isinstance(urls, list) or not all(isinstance(url, str) and url.strip() for url in urls):
+            continue
+        clean_server = {"urls": [url.strip() for url in urls]}
+        for key in ("username", "credential"):
+            if server.get(key) is not None:
+                clean_server[key] = str(server[key])
+        valid_servers.append(clean_server)
+    return valid_servers or default_servers
+
+
+RTC_ICE_SERVERS = _rtc_ice_servers()
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},

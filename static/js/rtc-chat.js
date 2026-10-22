@@ -20,6 +20,7 @@
     let socketQueue = [];
     let peerConnection;
     let localStream;
+    let remoteStream;
     let activeCallId = "";
     let callState = "idle";
     let localMuted = false;
@@ -28,8 +29,20 @@
     let callStartedAt;
     let timer;
 
+    function configuredIceServers() {
+      try {
+        const configured = JSON.parse(widget.dataset.rtcIceServers || "[]");
+        return Array.isArray(configured) && configured.length
+          ? configured
+          : [{urls: "stun:stun.l.google.com:19302"}];
+      } catch (error) {
+        return [{urls: "stun:stun.l.google.com:19302"}];
+      }
+    }
+
     const rtcConfiguration = {
-      iceServers: [{urls: "stun:stun.l.google.com:19302"}],
+      iceServers: configuredIceServers(),
+      iceCandidatePoolSize: 10,
     };
 
     function setStatus(message) {
@@ -47,6 +60,34 @@
       const labelElement = button.querySelector("small");
       if (labelElement) labelElement.textContent = label;
       else button.textContent = label;
+    }
+
+    function unlockRemoteAudio() {
+      if (!remoteAudio) return;
+      remoteAudio.autoplay = true;
+      remoteAudio.playsInline = true;
+      remoteAudio.muted = !speakerEnabled;
+      remoteAudio.volume = 1;
+      if (!remoteAudio.srcObject && window.MediaStream) remoteAudio.srcObject = new MediaStream();
+      if (!speakerEnabled || !remoteAudio.srcObject) return;
+      const playback = remoteAudio.play();
+      if (playback && playback.catch) playback.catch(function () {
+        setStatus("Tap Speaker to allow call audio.");
+      });
+    }
+
+    function attachRemoteAudio(event) {
+      if (!remoteAudio) return;
+      if (event.streams && event.streams[0]) {
+        remoteStream = event.streams[0];
+      } else {
+        remoteStream = remoteStream || (window.MediaStream ? new MediaStream() : null);
+        if (remoteStream && event.track && !remoteStream.getTracks().some(function (track) { return track.id === event.track.id; })) {
+          remoteStream.addTrack(event.track);
+        }
+      }
+      if (remoteStream) remoteAudio.srcObject = remoteStream;
+      unlockRemoteAudio();
     }
 
     function makeId() {
@@ -115,7 +156,10 @@
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         throw new Error("This browser cannot access a microphone. Use HTTPS or a supported browser.");
       }
-      localStream = await navigator.mediaDevices.getUserMedia({audio: true, video: false});
+      localStream = await navigator.mediaDevices.getUserMedia({
+        audio: {echoCancellation: true, noiseSuppression: true, autoGainControl: true},
+        video: false,
+      });
       localStream.getAudioTracks().forEach(function (track) { track.enabled = !localMuted; });
       setMicStatus("Microphone active", true);
       return localStream;
@@ -131,12 +175,7 @@
         if (event.candidate) sendSignal("ice", {candidate: event.candidate});
       });
       peerConnection.addEventListener("track", function (event) {
-        if (!remoteAudio) return;
-        remoteAudio.srcObject = event.streams[0];
-        remoteAudio.muted = !speakerEnabled;
-        remoteAudio.play().catch(function () {
-          setStatus("Tap the speaker control to start remote audio.");
-        });
+        attachRemoteAudio(event);
       });
       peerConnection.addEventListener("connectionstatechange", function () {
         if (!peerConnection) return;
@@ -150,6 +189,13 @@
           cleanup(false);
         } else if (peerConnection.connectionState === "disconnected") {
           setStatus("Voice connection interrupted. Reconnecting…");
+        }
+      });
+      peerConnection.addEventListener("iceconnectionstatechange", function () {
+        if (!peerConnection) return;
+        if (peerConnection.iceConnectionState === "failed") {
+          setStatus("The call could not reach the other device. Check the network or TURN setup.");
+          cleanup(false);
         }
       });
       return peerConnection;
@@ -171,6 +217,7 @@
       if (callState !== "idle") return;
       try {
         activeCallId = makeId();
+        unlockRemoteAudio();
         await addLocalTracks();
         callState = "outgoing";
         callStartedAt = null;
@@ -186,6 +233,7 @@
     async function acceptIncomingCall() {
       if (callState !== "incoming") return;
       try {
+        unlockRemoteAudio();
         await addLocalTracks();
         callState = "connected";
         callStartedAt = Date.now();
@@ -284,6 +332,7 @@
         remoteAudio.pause();
         remoteAudio.srcObject = null;
       }
+      remoteStream = null;
       activeCallId = "";
       callState = "idle";
       localMuted = false;
@@ -335,7 +384,7 @@
       if (remoteAudio) remoteAudio.muted = !speakerEnabled;
       speakerButton.classList.toggle("active", speakerEnabled);
       setButtonLabel(speakerButton, speakerEnabled ? "Speaker" : "Earpiece");
-      if (speakerEnabled && remoteAudio) remoteAudio.play().catch(function () {});
+      if (speakerEnabled) unlockRemoteAudio();
     });
     if (referralSelect) referralSelect.addEventListener("change", function () {
       cleanup(true);
