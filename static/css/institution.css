@@ -592,6 +592,49 @@ a { color: inherit; }
   }
 }
 
+/* Keep portal text readable over the pale animated surfaces. */
+.institution-page .institution-tabs a {
+  color: #24485a;
+}
+
+.institution-page .institution-tabs a.active {
+  color: #124766;
+}
+
+.institution-page .institution-tabs a.active b {
+  color: #124766;
+  background: #fff;
+}
+
+.institution-page .institution-heading > div > p:last-child,
+.institution-page .institution-case-heading > div > p:last-child,
+.institution-page .institution-case-content p,
+.institution-page .institution-case-content > small,
+.institution-page .institution-case-meta,
+.institution-page .institution-report dt,
+.institution-page .institution-actions > p:not(.institution-kicker),
+.institution-page .institution-empty,
+.institution-page .institution-empty p {
+  color: #536b79;
+}
+
+.institution-page .institution-case-meta strong,
+.institution-page .institution-case-content h2,
+.institution-page .institution-empty h2,
+.institution-page .institution-panel h2,
+.institution-page .institution-map-panel-heading h2,
+.institution-page .institution-report dd {
+  color: #142f42;
+}
+
+.institution-page .institution-login-card input,
+.institution-page .institution-login-card select,
+.institution-page .institution-password-form input,
+.institution-page .institution-chat-form textarea {
+  color: #17222d;
+  background: #fff;
+}
+
 :root {
   --institution-surface-gradient: linear-gradient(135deg, #ffffff 0%, #f9feff 28%, #e2f8ff 62%, #b9ecff 100%);
 }

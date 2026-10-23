@@ -58,7 +58,9 @@
     body.textContent = payload.body || "Please follow the instructions from the response team.";
     const area = document.createElement("span");
     area.className = "critical-alert-area";
-    area.textContent = payload.area ? `District: ${payload.area}` : "District safety notice";
+    area.textContent = payload.national
+      ? "Audience: Uganda · Whole country"
+      : (payload.area ? `District: ${payload.area}` : "District safety notice");
     const openButton = document.createElement("button");
     openButton.type = "button";
     openButton.className = "critical-alert-open";

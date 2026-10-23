@@ -28,7 +28,8 @@ class WorkspaceInactivityMiddleware:
                 login_path = "/institution/login/" if request.path.startswith("/institution/") else "/dashboard/login/"
                 response = redirect(f"{login_path}?reason=inactivity")
                 return self._secure_workspace_response(request, response)
-            request.session["workspace_last_activity"] = now
+            if not self._is_dashboard_activity_ping(request):
+                request.session["workspace_last_activity"] = now
         response = self.get_response(request)
         return self._secure_workspace_response(request, response)
 
@@ -44,6 +45,10 @@ class WorkspaceInactivityMiddleware:
             has_public_token = bool(request.GET.get("access") or request.POST.get("access"))
             return not (has_public_session or has_public_token)
         return False
+
+    @staticmethod
+    def _is_dashboard_activity_ping(request):
+        return request.path == "/dashboard/activity-ping/"
 
     @staticmethod
     def _expects_json(request):

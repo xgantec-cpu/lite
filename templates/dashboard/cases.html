@@ -41,6 +41,44 @@
   {% endif %}
 {% endif %}
 </section>
+<section class="queue-panel archive-alert-panel" data-report-section data-report-label="Public alert archive">
+  <div class="panel-heading">
+    <div>
+      <h2>Public alert archive</h2>
+      <p>Official district and countrywide notices are retained here as an operations audit trail.</p>
+    </div>
+    <span class="archive-alert-count">{{ public_alerts|length }} notice{{ public_alerts|length|pluralize }}</span>
+  </div>
+  {% if public_alerts %}
+    <div class="archive-alert-list">
+      {% for alert in public_alerts %}
+        <article class="archive-alert-row">
+          <span class="archive-alert-icon" aria-hidden="true">⚠</span>
+          <div class="archive-alert-main">
+            <div class="archive-alert-topline">
+              <strong>{% if alert.is_national %}Uganda · Whole country{% else %}{{ alert.area.name }}{% endif %}</strong>
+              <time datetime="{{ alert.created_at|date:'c' }}">{{ alert.created_at|date:"d M Y, H:i" }}</time>
+            </div>
+            <h3>{{ alert.title }}</h3>
+            <p>{{ alert.body|truncatechars:220 }}</p>
+            <small>{{ alert.case_count_snapshot }} matching case{{ alert.case_count_snapshot|pluralize }} · {{ alert.recipient_count }} push recipient{{ alert.recipient_count|pluralize }}{% if alert.failed_count %} · {{ alert.failed_count }} failed{% endif %}</small>
+          </div>
+          <span class="archive-alert-status alert-status-{{ alert.delivery_status }}">{{ alert.get_delivery_status_display }}</span>
+          <form class="archive-alert-delete-form" method="post" action="{% url 'dashboard_alert_delete' alert.pk %}" data-delete-alert>
+            {% csrf_token %}
+            <button class="archive-alert-delete" type="submit" title="Delete alert" aria-label="Delete {{ alert.title }}">🗑</button>
+          </form>
+        </article>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="empty-state archive-alert-empty">
+      <div class="empty-icon">✓</div>
+      <h3>No public alerts archived yet</h3>
+      <p>Verified public notices sent from the global map will appear here.</p>
+    </div>
+  {% endif %}
+</section>
 <script src="{% static 'js/district-card-images.js' %}?v=20261038"></script>
 <script src="{% static 'js/overview-sparklines.js' %}?v=20261002"></script>
 <script>
@@ -48,6 +86,9 @@
     event.preventDefault();
     event.stopPropagation();
     window.location.href = "{% url 'dashboard_global_map' %}?case=" + encodeURIComponent(button.dataset.trackCase);
+  }));
+  document.querySelectorAll('[data-delete-alert]').forEach((form) => form.addEventListener('submit', (event) => {
+    if (!window.confirm('Delete this public alert from the archive? This cannot be undone.')) event.preventDefault();
   }));
 </script>
 {% endblock %}

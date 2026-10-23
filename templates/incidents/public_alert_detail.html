@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ alert.title }} · Public Safety Alert</title>
-  <link rel="stylesheet" href="{% static 'css/site.css' %}?v=20261022-public-alert-detail">
+  <link rel="stylesheet" href="{% static 'css/site.css' %}?v=20261023-national-alerts">
 </head>
 <body class="page-public-alert-detail">
   <header class="public-motto-header"><span>Saving lives is better.</span></header>
@@ -19,18 +19,18 @@
         </div>
         <span class="public-alert-detail-severity">Urgent notice</span>
       </header>
-      <p class="public-alert-detail-kicker">District safety information</p>
+      <p class="public-alert-detail-kicker">{% if alert.is_national %}Countrywide safety information{% else %}District safety information{% endif %}</p>
       <h1 id="public-alert-title">{{ alert.title }}</h1>
       <div class="public-alert-notice-strip" role="note">
         <span class="public-alert-notice-icon" aria-hidden="true">!</span>
         <div>
           <strong>Important notice</strong>
-          <p>This is an official public safety message for the district shown below.</p>
+          <p>{% if alert.is_national %}This is an official public safety message for people across Uganda.{% else %}This is an official public safety message for the district shown below.{% endif %}</p>
         </div>
       </div>
       <p class="public-alert-detail-body">{{ alert.body }}</p>
       <div class="public-alert-detail-meta">
-        <span><b>District</b>{{ alert.area.name }}</span>
+        <span><b>{% if alert.is_national %}Audience{% else %}District{% endif %}</b>{% if alert.is_national %}Uganda · Whole country{% else %}{{ alert.area.name }}{% endif %}</span>
         <time datetime="{{ alert.created_at|date:'c' }}"><b>Published</b>{{ alert.created_at|date:"j F Y, H:i" }}</time>
       </div>
       <div class="public-alert-detail-guidance">

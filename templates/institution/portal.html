@@ -4,9 +4,9 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ profile.institution_name }} · Rapid Response</title>
-  <link rel="stylesheet" href="{% static 'css/institution.css' %}?v=20261009">
-  <link rel="stylesheet" href="{% static 'css/institution-dark.css' %}?v=20261022-portal-ui">
-  <link rel="stylesheet" href="{% static 'css/dashboard/report-builder.css' %}?v=20261022-portal-ui">
+  <link rel="stylesheet" href="{% static 'css/institution.css' %}?v=20261023-portal-contrast">
+  <link rel="stylesheet" href="{% static 'css/institution-dark.css' %}?v=20261023-portal-contrast">
+  <link rel="stylesheet" href="{% static 'css/dashboard/report-builder.css' %}?v=20261023-report-footer">
 </head>
 <body class="institution-page" data-session-lock-url="{% url 'institution_logout' %}" data-session-keepalive-url="{% url 'workspace_keepalive' %}">
   <header class="institution-topbar">
@@ -44,5 +44,5 @@
 </body>
 <script src="{% static 'js/session-activity.js' %}?v=20261022-session-keepalive"></script>
 <script src="{% static 'js/theme-toggle.js' %}?v=20261022-portal-ui"></script>
-<script src="{% static 'js/report-builder.js' %}?v=20261022-portal-ui"></script>
+<script src="{% static 'js/report-builder.js' %}?v=20261023-report-footer"></script>
 </html>

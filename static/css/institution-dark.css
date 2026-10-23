@@ -133,3 +133,65 @@ html[data-theme="dark"] body.institution-page .institution-empty h2 {
 html[data-theme="dark"] body.institution-page .institution-empty p {
   color: #a9bdc8;
 }
+
+/* Portal contrast: every dark surface gets a deliberate readable text color. */
+html[data-theme="dark"] body.institution-page .institution-tabs a {
+  color: #d6e8ef !important;
+  background: #142733 !important;
+}
+
+html[data-theme="dark"] body.institution-page .institution-tabs a.active {
+  color: #fff !important;
+  background: linear-gradient(120deg, #155a80, #167d75 54%, #9c5d31) !important;
+}
+
+html[data-theme="dark"] body.institution-page .institution-tabs a.active b {
+  color: #124766 !important;
+  background: #eaf8fc !important;
+}
+
+html[data-theme="dark"] body.institution-page .institution-heading > div > p:last-child,
+html[data-theme="dark"] body.institution-page .institution-case-heading > div > p:last-child,
+html[data-theme="dark"] body.institution-page .institution-case-content p,
+html[data-theme="dark"] body.institution-page .institution-case-content > small,
+html[data-theme="dark"] body.institution-page .institution-case-meta,
+html[data-theme="dark"] body.institution-page .institution-report dt,
+html[data-theme="dark"] body.institution-page .institution-actions > p:not(.institution-kicker) {
+  color: #b7cbd5 !important;
+}
+
+html[data-theme="dark"] body.institution-page .institution-case-meta strong,
+html[data-theme="dark"] body.institution-page .institution-case-content h2,
+html[data-theme="dark"] body.institution-page .institution-empty h2,
+html[data-theme="dark"] body.institution-page .institution-panel h2,
+html[data-theme="dark"] body.institution-page .institution-map-panel-heading h2,
+html[data-theme="dark"] body.institution-page .institution-report dd {
+  color: #edf8fb !important;
+}
+
+html[data-theme="dark"] body.institution-page .institution-case-meta span,
+html[data-theme="dark"] body.institution-page .institution-priority {
+  color: #ffe0a3 !important;
+  background: #49391f !important;
+}
+
+html[data-theme="dark"] body.institution-page .institution-login-card input,
+html[data-theme="dark"] body.institution-page .institution-login-card select,
+html[data-theme="dark"] body.institution-page .institution-password-form input,
+html[data-theme="dark"] body.institution-page .institution-chat-form textarea,
+html[data-theme="dark"] body.institution-page .institution-chat-file {
+  border-color: #365665 !important;
+  color: #edf8fb !important;
+  background: #10222d !important;
+}
+
+html[data-theme="dark"] body.institution-page .institution-message-brief,
+html[data-theme="dark"] body.institution-page .institution-chat-empty {
+  color: #c3d5dd !important;
+  background: #1b3543 !important;
+}
+
+html[data-theme="dark"] body.institution-page .institution-map-link,
+html[data-theme="dark"] body.institution-page .institution-case-arrow {
+  color: #82d8f2 !important;
+}

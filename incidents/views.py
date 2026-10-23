@@ -44,6 +44,8 @@ from .websocket_auth import make_public_chat_token, make_websocket_token, public
 
 CRITICAL_TRACKING_WINDOW = timedelta(minutes=30)
 PUBLIC_ALERT_LIFETIME = timedelta(hours=4)
+PUBLIC_ALERT_SUBSCRIPTION_COOKIE = "rapid_response_public_alert_subscription"
+PUBLIC_ALERT_SUBSCRIPTION_COOKIE_MAX_AGE = 60 * 60 * 24 * 365
 TRACKING_OPEN_STATUSES = {"new", "acknowledged", "responding"}
 MAX_VIDEO_UPLOAD_BYTES = 25 * 1024 * 1024
 MAX_AUDIO_UPLOAD_BYTES = 10 * 1024 * 1024
@@ -437,6 +439,44 @@ def _subscription_area_list(subscription):
     return list(LocationArea.objects.filter(pk__in=area_ids, active=True).order_by("name"))
 
 
+def _public_alert_subscription_from_request(request):
+    endpoint_hash = request.get_signed_cookie(PUBLIC_ALERT_SUBSCRIPTION_COOKIE, default="")
+    if not re.fullmatch(r"[0-9a-f]{64}", endpoint_hash):
+        return None
+    return PublicAlertSubscription.objects.filter(endpoint_hash=endpoint_hash, active=True).first()
+
+
+def _public_alert_area_ids(subscription):
+    if subscription is None:
+        return set()
+    area_ids = set()
+    if subscription.receives_area_alerts:
+        area_ids.update(subscription.notification_areas.values_list("pk", flat=True))
+        if subscription.area_id:
+            area_ids.add(subscription.area_id)
+    area_ids.update(
+        LocationArea.objects.filter(
+            travel_safety_plans__subscription=subscription,
+            travel_safety_plans__active=True,
+            active=True,
+        ).values_list("pk", flat=True)
+    )
+    return area_ids
+
+
+def _remember_public_alert_subscription(request, response, subscription):
+    response.set_signed_cookie(
+        PUBLIC_ALERT_SUBSCRIPTION_COOKIE,
+        subscription.endpoint_hash,
+        max_age=PUBLIC_ALERT_SUBSCRIPTION_COOKIE_MAX_AGE,
+        secure=request.is_secure(),
+        httponly=True,
+        samesite="Lax",
+        path="/",
+    )
+    return response
+
+
 def public_alert_subscribe(request: HttpRequest) -> JsonResponse:
     if request.method != "POST":
         return JsonResponse({"error": "Use POST to subscribe to area alerts."}, status=405)
@@ -458,7 +498,8 @@ def public_alert_subscribe(request: HttpRequest) -> JsonResponse:
         subscription = _upsert_public_alert_subscription(request, payload, areas)
     except ValueError as error:
         return JsonResponse({"error": str(error)}, status=400)
-    return JsonResponse({"ok": True, "area": areas[0].name, "areas": [area.name for area in _subscription_area_list(subscription)]})
+    response = JsonResponse({"ok": True, "area": areas[0].name, "areas": [area.name for area in _subscription_area_list(subscription)]})
+    return _remember_public_alert_subscription(request, response, subscription)
 
 
 def public_alert_preferences(request: HttpRequest) -> JsonResponse:
@@ -475,7 +516,8 @@ def public_alert_preferences(request: HttpRequest) -> JsonResponse:
     ).first() if endpoint.startswith("https://") else None
     if subscription is None:
         return JsonResponse({"areas": []})
-    return JsonResponse({"areas": [area.pk for area in _subscription_area_list(subscription)]})
+    response = JsonResponse({"areas": [area.pk for area in _subscription_area_list(subscription)]})
+    return _remember_public_alert_subscription(request, response, subscription)
 
 
 def public_alert_remove_area(request: HttpRequest) -> JsonResponse:
@@ -502,7 +544,11 @@ def public_alert_remove_area(request: HttpRequest) -> JsonResponse:
         else:
             subscription.active = False
             subscription.save(update_fields=["active", "last_seen_at"])
-    return JsonResponse({"ok": True, "areas": [area.pk for area in remaining]})
+    response = JsonResponse({"ok": True, "areas": [area.pk for area in remaining]})
+    if subscription.active:
+        return _remember_public_alert_subscription(request, response, subscription)
+    response.delete_cookie(PUBLIC_ALERT_SUBSCRIPTION_COOKIE, path="/")
+    return response
 
 
 def subscriber_alerts(request: HttpRequest) -> HttpResponse:
@@ -513,15 +559,24 @@ def subscriber_alerts(request: HttpRequest) -> HttpResponse:
 
 
 def public_alert_history(request: HttpRequest) -> HttpResponse:
+    subscription = _public_alert_subscription_from_request(request)
+    area_ids = _public_alert_area_ids(subscription)
+    audience_filter = Q(is_national=True)
+    if area_ids:
+        audience_filter |= Q(area_id__in=area_ids)
     alerts = (
         AreaAlert.objects.filter(
+            audience_filter,
             created_at__gte=timezone.now() - PUBLIC_ALERT_LIFETIME,
-            delivery_status__in=("sent", "partial"),
+            delivery_status__in=("sent", "partial", "published"),
         )
         .select_related("area")
         .order_by("-created_at", "-pk")
     )
-    return render(request, "incidents/public_alert_history.html", {"alerts": alerts})
+    return render(request, "incidents/public_alert_history.html", {
+        "alerts": alerts,
+        "has_alert_subscription": subscription is not None,
+    })
 
 
 def public_area_alert_detail(request: HttpRequest, alert_id: int) -> HttpResponse:
@@ -530,7 +585,10 @@ def public_area_alert_detail(request: HttpRequest, alert_id: int) -> HttpRespons
         pk=alert_id,
     )
     if alert.created_at < timezone.now() - PUBLIC_ALERT_LIFETIME:
-        return redirect("subscriber_alerts")
+        return redirect("public_alert_history")
+    subscription = _public_alert_subscription_from_request(request)
+    if not alert.is_national and alert.area_id not in _public_alert_area_ids(subscription):
+        return redirect("public_alert_history")
     return render(request, "incidents/public_alert_detail.html", {"alert": alert})
 
 
@@ -817,7 +875,9 @@ def public_alert_unsubscribe(request: HttpRequest) -> JsonResponse:
     PublicAlertSubscription.objects.filter(
         endpoint_hash=hashlib.sha256(endpoint.encode("utf-8")).hexdigest(),
     ).update(active=False, last_seen_at=timezone.now())
-    return JsonResponse({"ok": True})
+    response = JsonResponse({"ok": True})
+    response.delete_cookie(PUBLIC_ALERT_SUBSCRIPTION_COOKIE, path="/")
+    return response
 
 
 def submit_success(request: HttpRequest) -> HttpResponse:
@@ -1582,6 +1642,70 @@ def _visible_incidents(user):
     ).distinct().order_by("-request__created_at", "-pk")
 
 
+def dashboard_activity_ping(request: HttpRequest) -> JsonResponse:
+    """Return small dashboard counters without re-rendering the current page."""
+    if not request.user.is_authenticated or not _can_access_dashboard(request.user):
+        return JsonResponse(
+            {"error": "The responder session is no longer active."},
+            status=401,
+        )
+
+    incoming = _visible_incidents(request.user).filter(
+        status="new",
+        opened_at__isnull=True,
+    ).select_related("request", "assigned_area").order_by("-request__created_at", "-pk")
+    latest_case = incoming.first()
+
+    active_referrals = Referral.objects.filter(
+        recipient_admin=request.user,
+        archived_at__isnull=True,
+    ).select_related("incident__request", "incident__assigned_area").order_by("-created_at", "-pk")
+    unread_referrals = active_referrals.filter(read_at__isnull=True)
+    latest_referral = active_referrals.first()
+
+    latest_inhouse_message = InHouseMessage.objects.filter(
+        recipient=request.user,
+        read_at__isnull=True,
+    ).order_by("-created_at", "-pk").first()
+    latest_case_message = CaseMessage.objects.filter(
+        recipient=request.user,
+        read_at__isnull=True,
+        referral__archived_at__isnull=True,
+    ).order_by("-created_at", "-pk").first()
+    latest_message = max(
+        [item for item in (latest_inhouse_message, latest_case_message) if item is not None],
+        key=lambda item: (item.created_at, item.pk),
+        default=None,
+    )
+
+    return JsonResponse({
+        "server_time": timezone.now().isoformat(),
+        "incoming": {
+            "count": incoming.count(),
+            "latest_id": latest_case.pk if latest_case else None,
+            "latest_reference": latest_case.request.request_id if latest_case else "",
+            "latest_area": latest_case.assigned_area.name if latest_case and latest_case.assigned_area else "Unassigned",
+            "latest_priority": latest_case.request.priority if latest_case else "",
+        },
+        "referrals": {
+            "unread": unread_referrals.count(),
+            "active": active_referrals.count(),
+            "latest_id": latest_referral.pk if latest_referral else None,
+        },
+        "messages": {
+            "unread": (
+                InHouseMessage.objects.filter(recipient=request.user, read_at__isnull=True).count()
+                + CaseMessage.objects.filter(
+                    recipient=request.user,
+                    read_at__isnull=True,
+                    referral__archived_at__isnull=True,
+                ).count()
+            ),
+            "latest_id": f"{latest_message.__class__.__name__}:{latest_message.pk}" if latest_message else "",
+        },
+    })
+
+
 def _inhouse_area_code(area):
     if area is None:
         return "non"
@@ -2192,6 +2316,13 @@ def _public_alert_areas(user):
     return user.response_profile.areas.filter(active=True)
 
 
+def _can_send_national_alert(user):
+    if user.is_superuser:
+        return True
+    profile = getattr(user, "response_profile", None)
+    return bool(profile and profile.active and profile.role == "regional")
+
+
 def _public_alert_incidents(user, area, issue_type=""):
     incidents = _visible_incidents(user).filter(
         assigned_area=area,
@@ -2200,6 +2331,20 @@ def _public_alert_incidents(user, area, issue_type=""):
     if issue_type and issue_type != "all":
         incidents = incidents.filter(request__emergency_type=issue_type)
     return incidents
+
+
+def _can_delete_public_alert(user, alert):
+    if user.is_superuser:
+        return True
+    profile = getattr(user, "response_profile", None)
+    if not profile or not profile.active:
+        return False
+    if alert.created_by_id == user.pk:
+        return True
+    return bool(
+        alert.area_id
+        and profile.areas.filter(active=True, pk=alert.area_id).exists()
+    )
 
 
 def _public_alert_metrics(user):
@@ -2264,7 +2409,8 @@ def _send_public_area_alert(alert, request):
         "title": alert.title,
         "body": alert.body,
         "severity": "critical",
-        "area": alert.area.name,
+        "area": "Uganda" if alert.is_national else alert.area.name,
+        "national": alert.is_national,
         "alert_id": alert.pk,
         "created_at": alert.created_at.isoformat(),
         "expires_at": (alert.created_at + PUBLIC_ALERT_LIFETIME).isoformat(),
@@ -2273,13 +2419,13 @@ def _send_public_area_alert(alert, request):
     sent_count = 0
     failed_count = 0
     failure_message = ""
-    recipient_subscriptions = PublicAlertSubscription.objects.filter(
-        active=True,
-    ).filter(
-        Q(receives_area_alerts=True, area=alert.area)
-        | Q(receives_area_alerts=True, notification_areas=alert.area)
-        | Q(travel_plans__route_areas=alert.area, travel_plans__active=True),
-    ).distinct()
+    recipient_subscriptions = PublicAlertSubscription.objects.filter(active=True)
+    if not alert.is_national:
+        recipient_subscriptions = recipient_subscriptions.filter(
+            Q(receives_area_alerts=True, area=alert.area)
+            | Q(receives_area_alerts=True, notification_areas=alert.area)
+            | Q(travel_plans__route_areas=alert.area, travel_plans__active=True),
+        ).distinct()
     for subscription in recipient_subscriptions.iterator():
         subscription_info = {
             "endpoint": subscription.endpoint,
@@ -2321,6 +2467,8 @@ def _send_public_area_alert(alert, request):
             )
 
     if sent_count == 0 and failed_count == 0:
+        if alert.is_national:
+            return "published", 0, 0, "National alert published. No subscribed browser was available for a push notification."
         return "no_subscribers", 0, 0, "Alert saved, but no people in this district have opted in to browser alerts."
     if sent_count and failed_count:
         return "partial", sent_count, failed_count, f"Alert delivered to {sent_count} subscribed browser(s); {failed_count} subscription(s) failed. {failure_message}"
@@ -2330,28 +2478,43 @@ def _send_public_area_alert(alert, request):
 
 
 def _create_public_area_alert(request, user):
-    try:
-        area_id = int(request.POST.get("alert_area", ""))
-    except (TypeError, ValueError):
-        messages.error(request, "Choose a district before sending an area alert.")
+    alert_scope = request.POST.get("alert_scope", "district").strip().lower()
+    if alert_scope not in {"district", "national"}:
+        messages.error(request, "Choose a valid alert audience.")
         return
-    area = _public_alert_areas(user).filter(pk=area_id).first()
-    if area is None:
-        messages.error(request, "You can only send alerts to a district assigned to your account.")
+    is_national = alert_scope == "national"
+    if is_national and not _can_send_national_alert(user):
+        messages.error(request, "Only a regional administrator or the main administrator can send a whole-country alert.")
         return
+    area = None
+    if not is_national:
+        try:
+            area_id = int(request.POST.get("alert_area", ""))
+        except (TypeError, ValueError):
+            messages.error(request, "Choose a district before sending an area alert.")
+            return
+        area = _public_alert_areas(user).filter(pk=area_id).first()
+        if area is None:
+            messages.error(request, "You can only send alerts to a district assigned to your account.")
+            return
     issue_type = request.POST.get("alert_issue_type", "all").strip().lower()
     valid_issue_types = {value for value, _ in EmergencyRequest.EMERGENCY_TYPES}
     if issue_type != "all" and issue_type not in valid_issue_types:
         messages.error(request, "Choose a valid emergency issue group.")
         return
-    alert_incidents = _public_alert_incidents(user, area, issue_type)
-    case_count = alert_incidents.count()
+    if is_national:
+        alert_incidents = _visible_incidents(user).filter(status__in=["new", "acknowledged", "responding"])
+        if issue_type != "all":
+            alert_incidents = alert_incidents.filter(request__emergency_type=issue_type)
+        case_count = alert_incidents.count()
+    else:
+        case_count = _public_alert_incidents(user, area, issue_type).count()
     title = request.POST.get("alert_title", "").strip()[:120]
     body = request.POST.get("alert_body", "").strip()[:600]
     if not title or not body:
         messages.error(request, "Add a short alert title and public safety message.")
         return
-    idempotency_key = _write_idempotency_key(request, "public-area-alert", area.pk, issue_type)
+    idempotency_key = _write_idempotency_key(request, "public-area-alert", alert_scope, area.pk if area else "uganda", issue_type)
     existing_alert = AreaAlert.objects.filter(idempotency_key=idempotency_key).first()
     if existing_alert:
         messages.info(request, "This area alert was already recorded.")
@@ -2363,9 +2526,13 @@ def _create_public_area_alert(request, user):
         body=body,
         issue_type="" if issue_type == "all" else issue_type,
         case_count_snapshot=case_count,
+        is_national=is_national,
         idempotency_key=idempotency_key,
     )
     delivery_status, recipient_count, failed_count, delivery_message = _send_public_area_alert(alert, request)
+    if is_national and delivery_status in {"not_configured", "no_subscribers", "failed"}:
+        delivery_status = "published"
+        delivery_message = f"National alert published for all users. {delivery_message}"
     alert.delivery_status = delivery_status
     alert.recipient_count = recipient_count
     alert.failed_count = failed_count
@@ -2428,7 +2595,7 @@ def dashboard_global_map(request: HttpRequest) -> HttpResponse:
         "selected_case": selected_case,
         "tracking_endpoint": reverse("dashboard_incident_location", args=[selected_case.pk]) if selected_case else "",
         "alert_metrics": _public_alert_metrics(request.user),
-        "alert_history": AreaAlert.objects.filter(area__in=_public_alert_areas(request.user)).select_related("area", "created_by")[:5],
+        "can_send_national_alert": _can_send_national_alert(request.user),
         "emergency_types": EmergencyRequest.EMERGENCY_TYPES,
         "webpush_configured": bool(
             settings.WEBPUSH_VAPID_PUBLIC_KEY
@@ -2450,6 +2617,12 @@ def _inhouse_conversation_for_users(user_a, user_b):
 def inhouse_chat(request: HttpRequest) -> HttpResponse:
     if not _can_access_dashboard(request.user):
         return _dashboard_inactive_redirect(request)
+    is_feed_request = request.GET.get("format") == "json"
+    if request.method == "GET" and not is_feed_request:
+        InHouseMessage.objects.filter(
+            recipient=request.user,
+            read_at__isnull=True,
+        ).update(read_at=timezone.now())
     profiles = list(
         ResponseProfile.objects.filter(
             active=True,
@@ -2526,7 +2699,7 @@ def inhouse_chat(request: HttpRequest) -> HttpResponse:
                 return JsonResponse({"ok": True})
         return redirect(f"{reverse('inhouse_chat')}?peer={selected_profile.user_id if selected_profile else ''}")
 
-    if conversation and request.GET.get("format") == "json":
+    if conversation and is_feed_request:
         InHouseMessage.objects.filter(
             conversation=conversation,
             recipient=request.user,
@@ -2899,13 +3072,49 @@ def dashboard_cases(request: HttpRequest) -> HttpResponse:
         if selected_area:
             cases = cases.filter(assigned_area=selected_area)
     grouped_cases = _group_incidents_by_area(cases)
+    public_alerts = AreaAlert.objects.filter(
+        Q(is_national=True) | Q(area__in=_public_alert_areas(request.user)),
+    ).select_related("area", "created_by").order_by("-created_at", "-pk")
+    if selected_area:
+        public_alerts = public_alerts.filter(Q(is_national=True) | Q(area=selected_area))
     return render(request, "dashboard/cases.html", {
         "cases": cases,
         "grouped_cases": grouped_cases,
+        "public_alerts": public_alerts,
         "selected_area": selected_area,
         "status_filter": status_filter,
         "district_filter": district_filter,
     })
+
+
+@login_required
+def dashboard_alert_delete(request: HttpRequest, alert_id: int) -> HttpResponse:
+    if not _can_access_dashboard(request.user):
+        return _dashboard_inactive_redirect(request)
+    if request.method != "POST":
+        return HttpResponseForbidden("Alerts can only be deleted with a POST request.")
+
+    alert = get_object_or_404(AreaAlert, pk=alert_id)
+    if not _can_delete_public_alert(request.user, alert):
+        record_security_event(
+            request,
+            "public_alert_delete_failure",
+            user=request.user,
+            details={"alert_id": alert.pk, "reason": "not_authorized"},
+        )
+        messages.error(request, "You are not allowed to delete this public alert.")
+        return redirect("dashboard_cases")
+
+    alert_title = alert.title
+    alert.delete()
+    record_security_event(
+        request,
+        "public_alert_delete_success",
+        user=request.user,
+        details={"alert_id": alert_id, "title": alert_title},
+    )
+    messages.success(request, "The public alert was deleted from the archive.")
+    return redirect("dashboard_cases")
 
 
 @login_required
@@ -3391,18 +3600,36 @@ def dashboard_referral_admin_search(request: HttpRequest) -> HttpResponse:
 def dashboard_referral_inbox(request: HttpRequest) -> HttpResponse:
     if not _can_access_dashboard(request.user):
         return _dashboard_inactive_redirect(request)
+    view = request.GET.get("view") or request.POST.get("view", "inbox")
+    if view not in {"inbox", "history"}:
+        view = "inbox"
     if request.method == "POST":
         referral = get_object_or_404(Referral, pk=request.POST.get("referral"), recipient_admin=request.user)
-        referral.read_at = timezone.now()
-        referral.save(update_fields=["read_at"])
-        return redirect("dashboard_referral_inbox")
-    referrals = Referral.objects.filter(recipient_admin=request.user).select_related(
+        action = request.POST.get("action", "read")
+        if action == "archive":
+            referral.archived_at = timezone.now()
+            referral.read_at = referral.read_at or timezone.now()
+            referral.save(update_fields=["archived_at", "read_at"])
+        elif action == "restore":
+            referral.archived_at = None
+            referral.save(update_fields=["archived_at"])
+        else:
+            referral.read_at = timezone.now()
+            referral.save(update_fields=["read_at"])
+        return redirect(f"{reverse('dashboard_referral_inbox')}?view={view}")
+    all_referrals = Referral.objects.filter(recipient_admin=request.user).select_related(
         "incident__request", "incident__assigned_area", "referred_by"
-    )
+    ).order_by("-created_at", "-pk")
+    active_referrals = all_referrals.filter(archived_at__isnull=True)
+    history_referrals = all_referrals.filter(archived_at__isnull=False)
+    referrals = history_referrals if view == "history" else active_referrals
     referral_rows = [{"referral": referral, "sender_label": masked_admin_label(referral.referred_by)} for referral in referrals]
     return render(request, "dashboard/referral_inbox.html", {
         "referrals": referral_rows,
-        "unread_count": referrals.filter(read_at__isnull=True).count(),
+        "view": view,
+        "inbox_count": active_referrals.count(),
+        "history_count": history_referrals.count(),
+        "unread_count": active_referrals.filter(read_at__isnull=True).count(),
     })
 
 

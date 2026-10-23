@@ -25,10 +25,17 @@ This is the first Django MVP for a location-aware emergency request platform.
 ## Run locally
 
 ```bash
-python3 manage.py migrate
-python3 manage.py createsuperuser
-python3 manage.py runserver
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python manage.py migrate
+python manage.py createsuperuser
+python manage.py runserver
 ```
+
+Activate `.venv` before starting the server. Public browser alerts use `pywebpush`
+and `py-vapid`; running `python3 manage.py runserver` outside the virtual
+environment can produce a misleading “Install the Web Push dependency” message.
 
 Open `http://127.0.0.1:8000/` for the public form and `/admin/` for operations.
 

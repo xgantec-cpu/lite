@@ -219,6 +219,27 @@ html[data-theme="dark"] .inhouse-select-state h2 {
   color: #e7f0f7 !important;
 }
 
+html[data-theme="dark"] .inhouse-panel-heading,
+html[data-theme="dark"] .inhouse-conversation-header {
+  border-color: #31495a !important;
+  background: #142532 !important;
+}
+
+html[data-theme="dark"] .inhouse-conversation-header h2,
+html[data-theme="dark"] .inhouse-panel-heading h2 {
+  color: #f0f7fb !important;
+}
+
+html[data-theme="dark"] .inhouse-conversation-header small {
+  color: #9aabb8 !important;
+}
+
+html[data-theme="dark"] .inhouse-message.mine {
+  border-color: #318db4 !important;
+  color: #fff !important;
+  background: #146a93 !important;
+}
+
 html[data-theme="dark"] .inhouse-contact-copy small,
 html[data-theme="dark"] .inhouse-empty-contacts,
 html[data-theme="dark"] .inhouse-chat-empty {
@@ -230,6 +251,32 @@ html[data-theme="dark"] .inhouse-compose,
 html[data-theme="dark"] .official-chat-panel,
 html[data-theme="dark"] .official-chat-panel form {
   background: #141f2b !important;
+}
+
+html[data-theme="dark"] .inhouse-compose-bar {
+  border-color: #385264 !important;
+  background: #0f1a25 !important;
+  box-shadow: none !important;
+}
+
+html[data-theme="dark"] .inhouse-compose-bar:focus-within {
+  border-color: #4daed0 !important;
+  box-shadow: 0 0 0 3px rgba(77, 174, 208, .16) !important;
+}
+
+html[data-theme="dark"] .inhouse-compose .inhouse-chat-file {
+  color: #bfeafa !important;
+  background: #17384a !important;
+}
+
+html[data-theme="dark"] .inhouse-compose .inhouse-chat-file:hover {
+  color: #fff !important;
+  background: #20516a !important;
+}
+
+html[data-theme="dark"] .inhouse-compose-hint,
+html[data-theme="dark"] .inhouse-file-name {
+  color: #9aabb8 !important;
 }
 
 html[data-theme="dark"] .inhouse-message,
@@ -700,4 +747,138 @@ html[data-theme="dark"] .global-alert-config-warning {
   border-color: #80682c !important;
   color: #ffe39a !important;
   background: #3a3019 !important;
+}
+
+html[data-theme="dark"] .dashboard-flashes .flash,
+html[data-theme="dark"] .live-notification {
+  border-color: #1d5278 !important;
+  color: #fff !important;
+  background: #0b2f50 !important;
+}
+
+html[data-theme="dark"] .dashboard-flashes .flash-error,
+html[data-theme="dark"] .dashboard-flashes .flash-danger,
+html[data-theme="dark"] .live-notification-red {
+  border-left-color: #ed6c65 !important;
+}
+
+html[data-theme="dark"] .dashboard-flashes .flash-warning,
+html[data-theme="dark"] .live-notification-orange {
+  border-left-color: #e6ad55 !important;
+}
+
+html[data-theme="dark"] .flash-close,
+html[data-theme="dark"] .live-notification-close,
+html[data-theme="dark"] .live-notification-content > span {
+  color: #fff !important;
+}
+
+html[data-theme="dark"] .live-notification-title {
+  color: #fff !important;
+}
+
+html[data-theme="dark"] .dashboard-notifications-toggle,
+html[data-theme="dark"] .dashboard-notifications-panel,
+html[data-theme="dark"] .dashboard-notification-item {
+  border-color: #1d5278 !important;
+  color: #fff !important;
+  background: #0b2f50 !important;
+}
+
+html[data-theme="dark"] .dashboard-notifications-toggle:hover,
+html[data-theme="dark"] .dashboard-notifications.is-open .dashboard-notifications-toggle,
+html[data-theme="dark"] .dashboard-notification-item.is-unread,
+html[data-theme="dark"] .dashboard-notifications-heading,
+html[data-theme="dark"] .dashboard-notifications-footer {
+  background: #14476b !important;
+}
+
+html[data-theme="dark"] .dashboard-notifications-heading,
+html[data-theme="dark"] .dashboard-notifications-footer,
+html[data-theme="dark"] .dashboard-notification-item {
+  border-color: #35566a !important;
+}
+
+html[data-theme="dark"] .dashboard-notifications-heading strong,
+html[data-theme="dark"] .dashboard-notification-content strong {
+  color: #fff !important;
+}
+
+html[data-theme="dark"] .dashboard-notifications-heading small,
+html[data-theme="dark"] .dashboard-notification-content span,
+html[data-theme="dark"] .dashboard-notification-content small,
+html[data-theme="dark"] .dashboard-notifications-empty,
+html[data-theme="dark"] .dashboard-notifications-close,
+html[data-theme="dark"] .dashboard-notification-dismiss {
+  color: #fff !important;
+}
+
+html[data-theme="dark"] .dashboard-notifications-footer,
+html[data-theme="dark"] .dashboard-notification-open {
+  color: #fff !important;
+}
+
+html[data-theme="dark"] .referral-inbox-summary span,
+html[data-theme="dark"] .referral-view-tabs {
+  border-color: #294555 !important;
+  background: #142532 !important;
+}
+
+html[data-theme="dark"] .referral-inbox-summary strong,
+html[data-theme="dark"] .referral-view-tabs a {
+  color: #e7f0f7 !important;
+}
+
+html[data-theme="dark"] .referral-inbox-summary small,
+html[data-theme="dark"] .referral-row-meta,
+html[data-theme="dark"] .referral-row-meta span + span,
+html[data-theme="dark"] .referral-row-meta time {
+  color: #9aabb8 !important;
+}
+
+html[data-theme="dark"] .referral-view-tabs a.active {
+  color: #fff !important;
+  background: #245d88 !important;
+}
+
+html[data-theme="dark"] .referral-archive-button {
+  border-color: #7e4b48 !important;
+  color: #ed9b94 !important;
+}
+
+html[data-theme="dark"] .archive-alert-count {
+  color: #a9dcf2 !important;
+  background: #173b50 !important;
+}
+
+html[data-theme="dark"] .archive-alert-row {
+  border-color: #294555 !important;
+}
+
+html[data-theme="dark"] .archive-alert-icon {
+  color: #ffd48a !important;
+  background: #49361d !important;
+}
+
+html[data-theme="dark"] .archive-alert-topline strong,
+html[data-theme="dark"] .archive-alert-main h3 {
+  color: #e7f0f7 !important;
+}
+
+html[data-theme="dark"] .archive-alert-topline time,
+html[data-theme="dark"] .archive-alert-main p,
+html[data-theme="dark"] .archive-alert-main small {
+  color: #9aabb8 !important;
+}
+
+html[data-theme="dark"] .archive-alert-delete {
+  border-color: #7b4545 !important;
+  color: #ffaaa3 !important;
+  background: #3a2022 !important;
+}
+
+html[data-theme="dark"] .archive-alert-delete:hover {
+  border-color: #ed6c65 !important;
+  color: #fff !important;
+  background: #b52f2b !important;
 }

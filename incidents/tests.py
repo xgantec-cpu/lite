@@ -1137,12 +1137,113 @@ class ResponderDashboardTests(TestCase):
         selected_points = [point for point in response.context["map_points"] if point["selected"]]
         self.assertEqual([point["id"] for point in selected_points], [self.incident.pk])
 
+    def test_dashboard_activity_ping_returns_live_case_and_message_counters(self):
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("dashboard_activity_ping"))
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["incoming"]["count"], 1)
+        self.assertEqual(payload["incoming"]["latest_id"], self.incident.pk)
+        self.assertEqual(payload["referrals"]["unread"], 0)
+        self.assertEqual(payload["messages"]["unread"], 0)
+
+    def test_dashboard_activity_ping_returns_json_401_for_an_inactive_session(self):
+        self.profile.active = False
+        self.profile.save(update_fields=["active"])
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("dashboard_activity_ping"), HTTP_ACCEPT="application/json")
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.json()["error"], "The responder session is no longer active.")
+
+    def test_dashboard_activity_ping_does_not_extend_an_idle_workspace_session(self):
+        self.client.force_login(self.user)
+        session = self.client.session
+        session["workspace_last_activity"] = int(time.time()) - 301
+        session.save()
+        response = self.client.get(reverse("dashboard_activity_ping"), HTTP_ACCEPT="application/json")
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.json()["error"], "Your session expired after five minutes of inactivity.")
+
     def test_global_map_shows_the_area_alert_composer(self):
         self.client.force_login(self.user)
         response = self.client.get(reverse("dashboard_global_map"))
         self.assertContains(response, "Send an area alert")
         self.assertContains(response, "Send when your team verifies a public need")
         self.assertContains(response, "Do not include names, phone numbers, or exact case locations.")
+
+    def test_public_alert_history_is_stored_in_cases_archive_not_map_composer(self):
+        AreaAlert.objects.create(
+            area=self.masaka,
+            created_by=self.user,
+            title="Masaka public safety notice",
+            body="Please follow verified response guidance.",
+            delivery_status="sent",
+            idempotency_key="public-alert-cases-archive-test",
+        )
+        self.client.force_login(self.user)
+        map_response = self.client.get(reverse("dashboard_global_map"))
+        self.assertNotContains(map_response, "Masaka public safety notice")
+        archive_response = self.client.get(reverse("dashboard_cases"))
+        self.assertContains(archive_response, "Public alert archive")
+        self.assertContains(archive_response, "Masaka public safety notice")
+        self.assertContains(archive_response, "Masaka")
+
+    def test_alert_creator_can_delete_public_alert_from_cases_archive(self):
+        alert = AreaAlert.objects.create(
+            area=self.masaka,
+            created_by=self.user,
+            title="Delete this public safety notice",
+            body="This notice is no longer required.",
+            delivery_status="sent",
+            idempotency_key="public-alert-delete-archive-test",
+        )
+        self.client.force_login(self.user)
+        response = self.client.post(reverse("dashboard_alert_delete", args=[alert.pk]), follow=True)
+        self.assertEqual(response.redirect_chain[-1][0], reverse("dashboard_cases"))
+        self.assertFalse(AreaAlert.objects.filter(pk=alert.pk).exists())
+        self.assertContains(response, "The public alert was deleted from the archive.")
+
+    def test_non_admin_cannot_delete_public_alert(self):
+        alert = AreaAlert.objects.create(
+            area=self.masaka,
+            created_by=self.user,
+            title="Protected public safety notice",
+            body="This notice should remain in the archive.",
+            delivery_status="sent",
+            idempotency_key="public-alert-delete-protected-test",
+        )
+        other_user = get_user_model().objects.create_user(username="unapproved-alert-user", password="secret-pass")
+        self.client.force_login(other_user)
+        response = self.client.post(reverse("dashboard_alert_delete", args=[alert.pk]))
+        self.assertRedirects(response, reverse("dashboard_login") + "?reason=inactive")
+        self.assertTrue(AreaAlert.objects.filter(pk=alert.pk).exists())
+
+    def test_regional_admin_can_choose_whole_country_alert_audience(self):
+        self.profile.role = "regional"
+        self.profile.save(update_fields=["role"])
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("dashboard_global_map"))
+        self.assertContains(response, "Whole country · Uganda")
+
+    @override_settings(WEBPUSH_VAPID_PUBLIC_KEY="", WEBPUSH_VAPID_PRIVATE_KEY="", WEBPUSH_VAPID_SUBJECT="")
+    def test_regional_admin_can_publish_a_whole_country_alert(self):
+        self.profile.role = "regional"
+        self.profile.save(update_fields=["role"])
+        self.client.force_login(self.user)
+        response = self.client.post(reverse("dashboard_global_map"), {
+            "action": "send_area_alert",
+            "alert_scope": "national",
+            "alert_area": "",
+            "alert_issue_type": "security",
+            "alert_title": "Countrywide safety information",
+            "alert_body": "Please follow official safety guidance across Uganda.",
+        }, follow=True)
+        self.assertEqual(response.status_code, 200)
+        alert = AreaAlert.objects.get()
+        self.assertTrue(alert.is_national)
+        self.assertIsNone(alert.area)
+        self.assertEqual(alert.delivery_status, "published")
+        self.assertContains(response, "National alert published")
 
     @override_settings(WEBPUSH_VAPID_PUBLIC_KEY="", WEBPUSH_VAPID_PRIVATE_KEY="", WEBPUSH_VAPID_SUBJECT="")
     def test_public_area_alert_can_be_sent_for_an_early_security_warning(self):
@@ -1170,6 +1271,15 @@ class ResponderDashboardTests(TestCase):
             issue_type="security",
             idempotency_key="public-alert-detail-test",
         )
+        self.client.post(
+            reverse("public_alert_subscribe"),
+            data=json.dumps({
+                "area_id": self.masaka.pk,
+                "endpoint": "https://push.example.test/detail-subscription",
+                "keys": {"p256dh": "public-key", "auth": "auth-key"},
+            }),
+            content_type="application/json",
+        )
         response = self.client.get(reverse("public_area_alert_detail", args=[alert.pk]))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Road safety information")
@@ -1193,12 +1303,56 @@ class ResponderDashboardTests(TestCase):
             delivery_status="failed",
             idempotency_key="public-alert-history-failed-test",
         )
+        self.client.post(
+            reverse("public_alert_subscribe"),
+            data=json.dumps({
+                "area_id": self.masaka.pk,
+                "endpoint": "https://push.example.test/history-subscription",
+                "keys": {"p256dh": "public-key", "auth": "auth-key"},
+            }),
+            content_type="application/json",
+        )
         response = self.client.get(reverse("public_alert_history"))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Sent public notifications")
         self.assertContains(response, "Active road safety notice")
         self.assertContains(response, "Masaka")
         self.assertNotContains(response, "Undelivered internal notice")
+
+    def test_new_public_alert_user_cannot_view_notifications_without_subscription(self):
+        alert = AreaAlert.objects.create(
+            area=self.masaka,
+            created_by=self.user,
+            title="Subscriber-only road notice",
+            body="This notice must not be shown to a new visitor.",
+            delivery_status="sent",
+            idempotency_key="public-alert-subscription-gate-test",
+        )
+        history = self.client.get(reverse("public_alert_history"))
+        self.assertEqual(history.status_code, 200)
+        self.assertContains(history, "No countrywide notices right now")
+        self.assertNotContains(history, "Subscriber-only road notice")
+        detail = self.client.get(reverse("public_area_alert_detail", args=[alert.pk]))
+        self.assertRedirects(detail, reverse("public_alert_history"))
+
+    def test_new_public_alert_user_can_view_a_whole_country_notice(self):
+        alert = AreaAlert.objects.create(
+            area=None,
+            is_national=True,
+            created_by=self.user,
+            title="Whole country safety notice",
+            body="Please follow official guidance across Uganda.",
+            delivery_status="published",
+            idempotency_key="public-alert-national-visibility-test",
+        )
+        history = self.client.get(reverse("public_alert_history"))
+        self.assertEqual(history.status_code, 200)
+        self.assertContains(history, "Whole country safety notice")
+        self.assertContains(history, "Uganda · Whole country")
+        detail = self.client.get(reverse("public_area_alert_detail", args=[alert.pk]))
+        self.assertEqual(detail.status_code, 200)
+        self.assertContains(detail, "Countrywide safety information")
+        self.assertContains(detail, "Uganda · Whole country")
 
     def test_travel_location_area_resolves_gps_to_the_starting_district(self):
         response = self.client.post(
@@ -1220,7 +1374,7 @@ class ResponderDashboardTests(TestCase):
         )
         AreaAlert.objects.filter(pk=alert.pk).update(created_at=timezone.now() - timedelta(hours=5))
         response = self.client.get(reverse("public_area_alert_detail", args=[alert.pk]))
-        self.assertRedirects(response, reverse("subscriber_alerts"))
+        self.assertRedirects(response, reverse("public_alert_history"))
 
     def test_public_alert_subscription_is_saved_for_one_district(self):
         response = self.client.post(
@@ -1237,6 +1391,7 @@ class ResponderDashboardTests(TestCase):
         self.assertEqual(subscription.area, self.masaka)
         self.assertTrue(subscription.active)
         self.assertEqual(subscription.endpoint, "https://push.example.test/subscription-1")
+        self.assertIn("rapid_response_public_alert_subscription", response.cookies)
 
     def test_subscriber_page_saves_multiple_places_and_travel_watch(self):
         response = self.client.get(reverse("subscriber_alerts"))
@@ -1392,6 +1547,9 @@ class ResponderDashboardTests(TestCase):
         response = self.client.get(reverse("inhouse_chat"))
         self.assertContains(response, "msk")
         self.assertContains(response, "kpl")
+        response = self.client.get(reverse("inhouse_chat"), {"peer": kampala_admin.pk})
+        self.assertContains(response, "Enter to send")
+        self.assertContains(response, "data-inhouse-send")
         response = self.client.post(reverse("inhouse_chat"), {
             "peer": kampala_admin.pk,
             "body": "Masaka response team checking in.",
@@ -1403,6 +1561,28 @@ class ResponderDashboardTests(TestCase):
         self.assertTrue(message.body.startswith("Masaka response"))
         response = self.client.get(reverse("inhouse_chat"), {"format": "json", "peer": kampala_admin.pk})
         self.assertEqual(response.json()["messages"][0]["sender_code"], "msk")
+
+    def test_opening_inhouse_chat_clears_unread_notification(self):
+        kampala_admin = get_user_model().objects.create_user(username="kampala-notifier", password="secret-pass")
+        kampala_profile = ResponseProfile.objects.create(user=kampala_admin)
+        kampala_profile.areas.add(self.kampala)
+        conversation = InHouseConversation.objects.create(
+            user_one_id=min(self.user.pk, kampala_admin.pk),
+            user_two_id=max(self.user.pk, kampala_admin.pk),
+        )
+        incoming_message = InHouseMessage.objects.create(
+            conversation=conversation,
+            sender=kampala_admin,
+            recipient=self.user,
+            body="Please confirm the district response.",
+        )
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("inhouse_chat"), {"peer": kampala_admin.pk})
+        self.assertEqual(response.status_code, 200)
+        incoming_message.refresh_from_db()
+        self.assertIsNotNone(incoming_message.read_at)
+        ping = self.client.get(reverse("dashboard_activity_ping"))
+        self.assertEqual(ping.json()["messages"]["unread"], 0)
 
     def test_acted_case_moves_to_archive_and_can_be_referred(self):
         self.client.force_login(self.user)
@@ -1457,6 +1637,30 @@ class ResponderDashboardTests(TestCase):
         response = self.client.get(reverse("dashboard_referral_inbox"))
         self.assertContains(response, self.incident.request.request_id)
         self.assertContains(response, "Please coordinate support")
+
+    def test_referral_inbox_can_archive_and_show_referral_history(self):
+        referral = Referral.objects.create(
+            incident=self.incident,
+            referred_by=self.user,
+            recipient_admin=self.user,
+            target_type="organization",
+            target_name="Masaka coordination desk",
+            target_contact="",
+            channel="in_app",
+            message="Please coordinate this response.",
+        )
+        self.client.force_login(self.user)
+        inbox = self.client.get(reverse("dashboard_referral_inbox"))
+        self.assertContains(inbox, "Masaka coordination desk")
+        archived = self.client.post(reverse("dashboard_referral_inbox"), {
+            "referral": referral.pk,
+            "action": "archive",
+        })
+        self.assertRedirects(archived, reverse("dashboard_referral_inbox") + "?view=inbox")
+        history = self.client.get(reverse("dashboard_referral_inbox"), {"view": "history"})
+        self.assertContains(history, "Referral history")
+        self.assertContains(history, "Masaka coordination desk")
+        self.assertContains(history, "Restore to inbox")
 
     def test_configured_police_referral_requires_matching_district(self):
         station = ReferralDestination.objects.create(

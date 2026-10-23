@@ -1,6 +1,92 @@
 {% extends "dashboard/base.html" %}
+
 {% block title %}Referral inbox{% endblock %}
+
 {% block content %}
-<div class="page-heading"><div><div class="eyebrow">In-house communication</div><h1>Referral inbox</h1><p>Cases transferred to your responder account by another admin.</p></div>{% if unread_count %}<span class="incoming-stat unopened"><small>Unread transfers</small><strong>{{ unread_count }}</strong></span>{% endif %}</div>
-<section class="queue-panel">{% if referrals %}<div class="referral-inbox-list">{% for row in referrals %}{% with referral=row.referral %}<article class="inbox-referral{% if not referral.read_at %} unread{% endif %}"><div class="inbox-referral-main"><div class="incident-top"><strong>{{ referral.incident.request.request_id }}</strong>{% if not referral.read_at %}<span class="case-state case-unopened">New transfer</span>{% else %}<span class="case-state case-opened">Read</span>{% endif %}</div><h2>{{ referral.target_name }}</h2><p>{{ referral.message|urlize }}</p><small>From {{ row.sender_label }} · {{ referral.created_at|date:"d M Y, H:i" }}</small></div><div class="inbox-referral-actions"><a class="filter-button" href="{% url 'dashboard_incident' referral.incident.pk %}">Open case report</a><a class="filter-button" href="{% url 'dashboard_global_map' %}?case={{ referral.incident.pk }}">Track on global map</a>{% if not referral.read_at %}<form method="post">{% csrf_token %}<input type="hidden" name="referral" value="{{ referral.pk }}"><button class="lock-button" type="submit">Mark read</button></form>{% endif %}</div></article>{% endwith %}{% endfor %}</div>{% else %}<div class="empty-state"><div class="empty-icon">↗</div><h3>No referrals yet</h3><p>In-house case transfers sent to your account will appear here.</p></div>{% endif %}</section>
+<div class="page-heading referral-inbox-heading">
+  <div>
+    <div class="eyebrow">In-house communication</div>
+    <h1>{% if view == "history" %}Referral history{% else %}Referral inbox{% endif %}</h1>
+    <p>{% if view == "history" %}Review referrals that have already been archived.{% else %}Cases transferred to your responder account by another admin.{% endif %}</p>
+  </div>
+  <div class="referral-inbox-summary">
+    <span><small>Unread</small><strong>{{ unread_count }}</strong></span>
+    <span><small>{% if view == "history" %}Archived{% else %}In inbox{% endif %}</small><strong>{% if view == "history" %}{{ history_count }}{% else %}{{ inbox_count }}{% endif %}</strong></span>
+  </div>
+</div>
+
+<nav class="referral-view-tabs" aria-label="Referral views">
+  <a class="{% if view == 'inbox' %}active{% endif %}" href="{% url 'dashboard_referral_inbox' %}">
+    <span>Inbox</span><b>{{ inbox_count }}</b>
+  </a>
+  <a class="{% if view == 'history' %}active{% endif %}" href="{% url 'dashboard_referral_inbox' %}?view=history">
+    <span>History</span><b>{{ history_count }}</b>
+  </a>
+</nav>
+
+<section class="queue-panel referral-inbox-panel">
+  {% if referrals %}
+    <div class="referral-inbox-list">
+      {% for row in referrals %}
+        {% with referral=row.referral %}
+          <article class="inbox-referral{% if not referral.read_at %} unread{% endif %}">
+            <div class="inbox-referral-main">
+              <div class="incident-top">
+                <strong>{{ referral.incident.request.request_id }}</strong>
+                {% if view == "history" %}
+                  <span class="case-state case-opened">Archived</span>
+                {% elif not referral.read_at %}
+                  <span class="case-state case-unopened">New transfer</span>
+                {% else %}
+                  <span class="case-state case-opened">Read</span>
+                {% endif %}
+              </div>
+              <h2>{{ referral.target_name }}</h2>
+              <p>{{ referral.message|urlize }}</p>
+              <div class="referral-row-meta">
+                <span>From {{ row.sender_label }}</span>
+                <span>{{ referral.get_target_type_display }} · {{ referral.get_channel_display }}</span>
+                <time datetime="{{ referral.created_at|date:'c' }}">{{ referral.created_at|date:"d M Y, H:i" }}</time>
+              </div>
+            </div>
+            <div class="inbox-referral-actions">
+              <a class="filter-button" href="{% url 'dashboard_incident' referral.incident.pk %}">Open case report</a>
+              <a class="filter-button" href="{% url 'dashboard_global_map' %}?case={{ referral.incident.pk }}">Track on global map</a>
+              {% if view == "history" %}
+                <form method="post">
+                  {% csrf_token %}
+                  <input type="hidden" name="referral" value="{{ referral.pk }}">
+                  <input type="hidden" name="action" value="restore">
+                  <input type="hidden" name="view" value="history">
+                  <button class="lock-button" type="submit">Restore to inbox</button>
+                </form>
+              {% else %}
+                {% if not referral.read_at %}
+                  <form method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="referral" value="{{ referral.pk }}">
+                    <input type="hidden" name="action" value="read">
+                    <button class="lock-button" type="submit">Mark read</button>
+                  </form>
+                {% endif %}
+                <form method="post">
+                  {% csrf_token %}
+                  <input type="hidden" name="referral" value="{{ referral.pk }}">
+                  <input type="hidden" name="action" value="archive">
+                  <button class="referral-archive-button" type="submit">Archive referral</button>
+                </form>
+              {% endif %}
+            </div>
+          </article>
+        {% endwith %}
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="empty-state referral-empty-state">
+      <div class="empty-icon">{% if view == "history" %}✓{% else %}↗{% endif %}</div>
+      <h3>{% if view == "history" %}No referral history yet{% else %}No referrals yet{% endif %}</h3>
+      <p>{% if view == "history" %}Archived case transfers will be kept here for follow-up and accountability.{% else %}In-house case transfers sent to your account will appear here automatically.{% endif %}</p>
+    </div>
+  {% endif %}
+</section>
 {% endblock %}

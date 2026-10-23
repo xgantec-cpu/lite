@@ -4,6 +4,7 @@ import re
 from django.contrib.auth import get_user_model
 from django.contrib.auth.hashers import check_password, make_password
 from django.db import models
+from django.db.models import Q
 from django.utils import timezone
 
 from .fields import EncryptedDecimalField, EncryptedTextField
@@ -460,8 +461,16 @@ class AreaAlert(models.Model):
         ("failed", "Delivery failed"),
         ("no_subscribers", "No opted-in subscribers"),
         ("not_configured", "Push service not configured"),
+        ("published", "Published nationally"),
     ]
-    area = models.ForeignKey(LocationArea, on_delete=models.PROTECT, related_name="public_alerts")
+    area = models.ForeignKey(
+        LocationArea,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="public_alerts",
+    )
+    is_national = models.BooleanField(default=False, db_index=True)
     created_by = models.ForeignKey(
         get_user_model(),
         null=True,
@@ -486,9 +495,19 @@ class AreaAlert(models.Model):
             models.Index(fields=["area", "created_at"]),
             models.Index(fields=["delivery_status", "created_at"]),
         ]
+        constraints = [
+            models.CheckConstraint(
+                check=(
+                    Q(is_national=True, area__isnull=True)
+                    | Q(is_national=False, area__isnull=False)
+                ),
+                name="area_alert_scope_area_consistent",
+            ),
+        ]
 
     def __str__(self):
-        return f"{self.title} · {self.area}"
+        audience = "Uganda" if self.is_national else self.area
+        return f"{self.title} · {audience}"
 
 
 class ReferralDestination(models.Model):

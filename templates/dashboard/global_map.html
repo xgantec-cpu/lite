@@ -35,24 +35,21 @@
     <div class="global-alert-panel-heading">
       <span class="global-alert-kicker">Community safety channel</span>
       <h2 id="area-alert-title">Send an area alert</h2>
-      <p>Share a calm, public-safe message with people who opted in to alerts for a district.</p>
+      <p>Share a calm, public-safe message with a district or publish an official notice across Uganda.</p>
       {% if not webpush_configured %}<div class="global-alert-config-warning">Delivery is not active yet. Add the Web Push environment keys before sending.</div>{% endif %}
     </div>
     <div class="global-alert-rule"><span>Sending guide</span><strong>Send when your team verifies a public need</strong></div>
     <form method="post" class="global-alert-form">
       {% csrf_token %}
       <input type="hidden" name="action" value="send_area_alert">
-      <label><span>Marked district</span><select name="alert_area" data-alert-area-select required><option value="">Choose a district</option>{% for metric in alert_metrics %}<option value="{{ metric.id }}">{{ metric.name }} · {{ metric.count }} active</option>{% endfor %}</select></label>
+      <label><span>Audience</span><select name="alert_scope" data-alert-scope><option value="district">One district</option>{% if can_send_national_alert %}<option value="national">Whole country · Uganda</option>{% endif %}</select></label>
+      <label data-alert-area-field><span data-alert-area-label>Marked district</span><select name="alert_area" data-alert-area-select><option value="">Choose a district</option>{% for metric in alert_metrics %}<option value="{{ metric.id }}">{{ metric.name }} · {{ metric.count }} active</option>{% endfor %}</select></label>
       <label><span>Issue group</span><select name="alert_issue_type" data-alert-issue-select><option value="all">All active issues</option>{% for value, label in emergency_types %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select></label>
       <label><span>Public headline</span><input name="alert_title" type="text" maxlength="120" placeholder="Safety information for this district" required></label>
       <label><span>Public message</span><textarea name="alert_body" maxlength="600" rows="4" placeholder="Explain what residents should know or do. Do not include names, phone numbers, or exact case locations." required></textarea></label>
       <div class="global-alert-readiness" data-alert-readiness role="status" aria-live="polite">Choose a district to check its active case volume.</div>
       <button class="global-alert-submit" type="submit">Send public area alert <span aria-hidden="true">→</span></button>
     </form>
-    <div class="global-alert-history">
-      <div class="global-alert-history-heading"><strong>Recent alerts</strong><span>Audit trail</span></div>
-      {% if alert_history %}<ul>{% for alert in alert_history %}<li><span><strong>{{ alert.area.name }}</strong><small>{{ alert.created_at|date:"d M Y, H:i" }} · {{ alert.case_count_snapshot }} matching cases</small></span><b class="alert-status-{{ alert.delivery_status }}">{{ alert.get_delivery_status_display }}</b></li>{% endfor %}</ul>{% else %}<p>No area alerts have been sent yet.</p>{% endif %}
-    </div>
   </aside>
 </div>
 
@@ -146,10 +143,18 @@
   window.setTimeout(() => globalMap.invalidateSize(), 250);
 
   const globalAlertMetrics = JSON.parse(document.getElementById('global-alert-metrics').textContent);
+  const alertScopeSelect = document.querySelector('[data-alert-scope]');
+  const alertAreaField = document.querySelector('[data-alert-area-field]');
   const alertAreaSelect = document.querySelector('[data-alert-area-select]');
+  const alertAreaLabel = document.querySelector('[data-alert-area-label]');
   const alertIssueSelect = document.querySelector('[data-alert-issue-select]');
   const alertReadiness = document.querySelector('[data-alert-readiness]');
   const updateAlertReadiness = () => {
+    if (alertScopeSelect?.value === 'national') {
+      alertReadiness.textContent = 'Whole country: this verified notice will be visible to every visitor for four hours. Existing subscribers may also receive a push notification.';
+      alertReadiness.dataset.state = 'ready';
+      return;
+    }
     const metric = globalAlertMetrics.find((item) => String(item.id) === alertAreaSelect.value);
     if (!metric) {
       alertReadiness.textContent = 'Choose a district to check its active case volume.';
@@ -163,9 +168,21 @@
     alertReadiness.textContent = `${metric.name}: ${count} matching active case${count === 1 ? '' : 's'}. You can send a verified public notice now.`;
     alertReadiness.dataset.state = 'ready';
   };
+  const updateAlertScope = () => {
+    const national = alertScopeSelect?.value === 'national';
+    if (alertAreaField) alertAreaField.hidden = national;
+    if (alertAreaLabel) alertAreaLabel.textContent = national ? 'Audience' : 'Marked district';
+    if (alertAreaSelect) {
+      alertAreaSelect.disabled = national;
+      alertAreaSelect.required = !national;
+    }
+    updateAlertReadiness();
+  };
   if (alertAreaSelect && alertIssueSelect && alertReadiness) {
     alertAreaSelect.addEventListener('change', updateAlertReadiness);
     alertIssueSelect.addEventListener('change', updateAlertReadiness);
+    alertScopeSelect?.addEventListener('change', updateAlertScope);
+    updateAlertScope();
   }
 </script>
 {% endblock %}

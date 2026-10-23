@@ -4,10 +4,10 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ referral.incident.request.request_id }} · Rapid Response</title>
-  <link rel="stylesheet" href="{% static 'css/institution.css' %}?v=20261009">
+  <link rel="stylesheet" href="{% static 'css/institution.css' %}?v=20261023-portal-contrast">
   <link rel="stylesheet" href="{% static 'css/chat-rtc.css' %}?v=20261022-portal-audio">
-  <link rel="stylesheet" href="{% static 'css/institution-dark.css' %}?v=20261022-portal-ui">
-  <link rel="stylesheet" href="{% static 'css/dashboard/report-builder.css' %}?v=20261022-portal-ui">
+  <link rel="stylesheet" href="{% static 'css/institution-dark.css' %}?v=20261023-portal-contrast">
+  <link rel="stylesheet" href="{% static 'css/dashboard/report-builder.css' %}?v=20261023-report-footer">
 </head>
 <body class="institution-page" data-session-lock-url="{% url 'institution_logout' %}" data-session-keepalive-url="{% url 'workspace_keepalive' %}">
   <header class="institution-topbar"><a class="institution-brand" href="{% url 'institution_portal' %}"><img class="institution-brand-logo" src="{% static 'Rapid Response Emergency Logo.png' %}" alt="" width="40" height="40"><span class="institution-brand-name">Rapid<span>Response</span></span></a><div class="institution-identity"><strong class="institution-identity-name">{{ profile.institution_name }}</strong><small>{{ profile.get_institution_type_display }} · {{ profile.area.name }}</small></div><div class="institution-topbar-actions"><button class="theme-toggle institution-theme-toggle" data-theme-toggle type="button" aria-label="Toggle dark mode" aria-pressed="false"><span class="theme-toggle-icon institution-theme-toggle-icon" aria-hidden="true">☾</span><span class="theme-toggle-label institution-theme-toggle-label">Dark mode</span></button><button class="report-open-button institution-report-open" data-report-open type="button" aria-haspopup="dialog"><span aria-hidden="true">▤</span><span>Print report</span></button><a class="institution-signout" href="{% url 'institution_logout' %}">Sign out</a></div></header>
@@ -34,6 +34,6 @@
 <script src="{% static 'js/rtc-chat.js' %}?v=20261022-portal-audio"></script>
 <script src="{% static 'js/session-activity.js' %}?v=20261022-session-keepalive"></script>
 <script src="{% static 'js/theme-toggle.js' %}?v=20261022-portal-ui"></script>
-<script src="{% static 'js/report-builder.js' %}?v=20261022-portal-ui"></script>
+<script src="{% static 'js/report-builder.js' %}?v=20261023-report-footer"></script>
 </body>
 </html>

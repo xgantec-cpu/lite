@@ -265,10 +265,13 @@ Say:
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-python3 manage.py migrate
-python3 manage.py createsuperuser
-python3 manage.py runserver
+python manage.py migrate
+python manage.py createsuperuser
+python manage.py runserver
 ```
+
+Keep the virtual environment active while running Django. Public browser alerts
+require the `pywebpush` and `py-vapid` packages installed by `requirements.txt`.
 
 Open these pages:
 

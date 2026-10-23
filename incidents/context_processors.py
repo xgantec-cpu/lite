@@ -3,7 +3,7 @@ import json
 from django.conf import settings
 from django.db.models import Q
 
-from .models import Incident
+from .models import CaseMessage, Incident, InHouseMessage, Referral
 
 
 def dashboard_navigation(request):
@@ -35,5 +35,18 @@ def dashboard_navigation(request):
     context.update({
         "dashboard_nav_count": incoming.count(),
         "dashboard_nav_severity": severity,
+        "dashboard_referral_count": Referral.objects.filter(
+            recipient_admin=request.user,
+            read_at__isnull=True,
+            archived_at__isnull=True,
+        ).count(),
+        "dashboard_message_count": (
+            InHouseMessage.objects.filter(recipient=request.user, read_at__isnull=True).count()
+            + CaseMessage.objects.filter(
+                recipient=request.user,
+                read_at__isnull=True,
+                referral__archived_at__isnull=True,
+            ).count()
+        ),
     })
     return context

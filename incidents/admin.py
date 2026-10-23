@@ -373,13 +373,17 @@ class EmergencyChatCallAdmin(admin.ModelAdmin):
 
 @admin.register(AreaAlert)
 class AreaAlertAdmin(admin.ModelAdmin):
-    list_display = ("created_at", "area", "title", "case_count_snapshot", "delivery_status", "recipient_count", "failed_count")
-    list_filter = ("area", "delivery_status", "created_at")
+    list_display = ("created_at", "audience", "title", "case_count_snapshot", "delivery_status", "recipient_count", "failed_count")
+    list_filter = ("is_national", "area", "delivery_status", "created_at")
     search_fields = ("area__name", "title")
     readonly_fields = (
-        "area", "created_by", "title", "body", "issue_type", "case_count_snapshot", "delivery_status",
+        "area", "is_national", "created_by", "title", "body", "issue_type", "case_count_snapshot", "delivery_status",
         "recipient_count", "failed_count", "idempotency_key", "sent_at", "created_at",
     )
+
+    @admin.display(description="Audience")
+    def audience(self, obj):
+        return "Uganda" if obj.is_national else obj.area
 
     def has_add_permission(self, request):
         return False

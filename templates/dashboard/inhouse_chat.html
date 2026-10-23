@@ -2,7 +2,7 @@
 {% load static %}
 
 {% block title %}In-house chat{% endblock %}
-{% block extra_css %}<link rel="stylesheet" href="{% static 'css/dashboard/inhouse-chat.css' %}?v=20261033"><link rel="stylesheet" href="{% static 'css/chat-rtc.css' %}?v=20261022-portal-audio">{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'css/dashboard/inhouse-chat.css' %}?v=20261023-chat-ui"><link rel="stylesheet" href="{% static 'css/chat-rtc.css' %}?v=20261022-portal-audio">{% endblock %}
 
 {% block content %}
 <div class="page-heading inhouse-heading">
@@ -42,9 +42,19 @@
     <form class="inhouse-compose" data-inhouse-form method="post" action="?peer={{ selected_profile.user_id }}">
       {% csrf_token %}
       <input type="hidden" name="peer" value="{{ selected_profile.user_id }}">
-      <textarea name="body" data-inhouse-body rows="2" maxlength="4000" placeholder="Write an update to {{ selected_code }}…"></textarea>
-      <label class="inhouse-chat-file">Attach file<input type="file" name="file" data-inhouse-file accept=".pdf,.json,.zip,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.jpg,.jpeg,.png,.gif,.webp,.webm,.ogg,.mp3,.m4a,.wav,.mp4,.mov"></label><small class="inhouse-file-name" data-inhouse-file-name></small>
-      <button type="submit">Send <span>→</span></button>
+      <div class="inhouse-compose-bar">
+        <label class="inhouse-chat-file" title="Attach a file">
+          <span class="inhouse-attach-icon" aria-hidden="true">＋</span>
+          <span class="sr-only">Attach a file</span>
+          <input type="file" name="file" data-inhouse-file accept=".pdf,.json,.zip,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.jpg,.jpeg,.png,.gif,.webp,.webm,.ogg,.mp3,.m4a,.wav,.mp4,.mov">
+        </label>
+        <textarea name="body" data-inhouse-body rows="1" maxlength="4000" placeholder="Write a message…" aria-label="Message to {{ selected_code }}"></textarea>
+        <button class="inhouse-send-button" data-inhouse-send type="submit" title="Send message" aria-label="Send message"><span aria-hidden="true">↑</span><span class="sr-only">Send message</span></button>
+      </div>
+      <div class="inhouse-compose-meta">
+        <small class="inhouse-file-name" data-inhouse-file-name aria-live="polite"></small>
+        <small class="inhouse-compose-hint">Enter to send · Shift+Enter for a new line</small>
+      </div>
     </form>
     {% else %}
     <div class="inhouse-select-state"><div class="inhouse-select-icon">⌁</div><h2>Select an admin to chat</h2><p>Choose a district ID from the response network to open a secure in-house channel.</p></div>
@@ -61,6 +71,7 @@
     const body = document.querySelector('[data-inhouse-body]');
     const file = document.querySelector('[data-inhouse-file]');
     const fileName = document.querySelector('[data-inhouse-file-name]');
+    const sendButton = document.querySelector('[data-inhouse-send]');
     const feedUrl = shell.dataset.feedUrl;
     const token = shell.dataset.websocketToken;
     const conversationId = shell.dataset.conversationId;
@@ -77,6 +88,11 @@
     };
 
     const scrollMessages = () => { messages.scrollTop = messages.scrollHeight; };
+    const resizeBody = () => {
+      body.style.height = 'auto';
+      body.style.height = `${Math.min(body.scrollHeight, 132)}px`;
+      body.style.overflowY = body.scrollHeight > 132 ? 'auto' : 'hidden';
+    };
     const renderMessages = (items) => {
       messages.textContent = '';
       if (!items.length) {
@@ -109,15 +125,22 @@
       });
       scrollMessages();
     };
-    if (file) file.addEventListener('change', () => { if (fileName) fileName.textContent = file.files[0] ? file.files[0].name : ''; });
+    if (file) file.addEventListener('change', () => {
+      if (fileName) fileName.textContent = file.files[0] ? `Attached · ${file.files[0].name}` : '';
+    });
+    body.addEventListener('input', resizeBody);
+    body.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return;
+      event.preventDefault();
+      if (!sendButton.disabled) form.requestSubmit();
+    });
     const refresh = async () => {
       const response = await fetch(feedUrl, {headers: {Accept: 'application/json'}, credentials: 'same-origin'});
       if (response.ok) renderMessages((await response.json()).messages || []);
     };
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
-      const button = form.querySelector('button');
-      button.disabled = true;
+      sendButton.disabled = true;
       try {
         const response = await fetch(form.action, {method: 'POST', body: new FormData(form), headers: {'X-Requested-With': 'XMLHttpRequest', Accept: 'application/json'}, credentials: 'same-origin'});
         const result = await response.json();
@@ -129,8 +152,9 @@
       } catch (error) {
         window.alert(error.message);
       } finally {
-        button.disabled = false;
+        sendButton.disabled = false;
         body.focus();
+        resizeBody();
       }
     });
     if (expandButton) expandButton.addEventListener('click', () => setExpanded(!shell.classList.contains('is-expanded')));
@@ -138,6 +162,7 @@
       if (event.key === 'Escape' && shell.classList.contains('is-expanded')) setExpanded(false);
     });
     scrollMessages();
+    resizeBody();
     if (token && conversationId && window.WebSocket) {
       const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
       const socket = new WebSocket(`${protocol}://${window.location.host}/ws/inhouse/chat/${conversationId}/?token=${encodeURIComponent(token)}`);
