@@ -818,6 +818,43 @@ html[data-theme="dark"] .dashboard-notification-open {
   color: #fff !important;
 }
 
+html[data-theme="dark"] .admin-guide-card {
+  border-color: #35566a;
+  color: #e7f0f7;
+  background: #142532;
+  box-shadow: 0 28px 80px rgba(0, 0, 0, .5);
+}
+
+html[data-theme="dark"] .admin-guide-close {
+  border-color: #385264;
+  color: #d8eaf2;
+  background: #1b3543;
+}
+
+html[data-theme="dark"] .admin-guide-card h2,
+html[data-theme="dark"] .admin-guide-steps strong {
+  color: #f0f7fb;
+}
+
+html[data-theme="dark"] .admin-guide-card > p:not(.eyebrow),
+html[data-theme="dark"] .admin-guide-steps small,
+html[data-theme="dark"] .admin-guide-footer span {
+  color: #a9bdc8;
+}
+
+html[data-theme="dark"] .admin-guide-steps li {
+  border-color: #35566a;
+  background: #1b3543;
+}
+
+html[data-theme="dark"] .admin-guide-example {
+  border-left-color: #ed6c65;
+  background: #3a2022;
+}
+
+html[data-theme="dark"] .admin-guide-example strong { color: #ffaaa3; }
+html[data-theme="dark"] .admin-guide-example p { color: #f0c4c1; }
+
 html[data-theme="dark"] .referral-inbox-summary span,
 html[data-theme="dark"] .referral-view-tabs {
   border-color: #294555 !important;

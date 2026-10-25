@@ -2771,6 +2771,94 @@ textarea {
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
+/* ---------- First-login admin quick guide ---------- */
+
+body.admin-guide-open { overflow: hidden; }
+
+.admin-guide-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1800;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(8, 31, 50, .48);
+  -webkit-backdrop-filter: blur(5px);
+  backdrop-filter: blur(5px);
+}
+
+.admin-guide-backdrop[hidden] { display: none; }
+
+.admin-guide-card {
+  position: relative;
+  width: min(520px, 100%);
+  max-height: min(700px, calc(100vh - 40px));
+  overflow-y: auto;
+  padding: 30px;
+  border: 1px solid #c7dce4;
+  border-radius: 22px;
+  color: #213543;
+  background: #fff;
+  box-shadow: 0 28px 80px rgba(8, 31, 50, .28);
+}
+
+.admin-guide-close {
+  position: absolute;
+  top: 15px;
+  right: 15px;
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border: 1px solid #d3e1e7;
+  border-radius: 50%;
+  color: #48616e;
+  background: #f5fafc;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.admin-guide-close:hover { color: #fff; background: #195c83; }
+
+.admin-guide-icon {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  margin-bottom: 16px;
+  place-items: center;
+  border-radius: 15px;
+  color: #fff;
+  background: linear-gradient(135deg, #195c83, #168779);
+  box-shadow: 0 10px 22px rgba(25, 92, 131, .2);
+  font-size: 27px;
+  font-weight: 900;
+}
+
+.admin-guide-card h2 { margin: 3px 48px 8px 0; color: #122d3b; font-size: clamp(24px, 4vw, 32px); letter-spacing: -.035em; }
+.admin-guide-card > p:not(.eyebrow) { margin: 0; color: #607985; font-size: 13px; line-height: 1.55; }
+
+.admin-guide-steps { display: grid; gap: 10px; margin: 22px 0; padding: 0; list-style: none; }
+.admin-guide-steps li { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 11px; align-items: start; padding: 11px 12px; border: 1px solid #dcebef; border-radius: 12px; background: #f7fcfd; }
+.admin-guide-steps li > b { display: grid; width: 30px; height: 30px; place-items: center; border-radius: 9px; color: #fff; background: #195c83; font-size: 12px; }
+.admin-guide-steps strong, .admin-guide-steps small { display: block; }
+.admin-guide-steps strong { color: #173b48; font-size: 12px; }
+.admin-guide-steps small { margin-top: 3px; color: #607985; font-size: 11px; line-height: 1.4; }
+
+.admin-guide-example { padding: 14px 16px; border-left: 4px solid #d71920; border-radius: 10px; background: #fff7f7; }
+.admin-guide-example strong { color: #b51218; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+.admin-guide-example p { margin: 5px 0 0; color: #5f4a4c; font-size: 12px; line-height: 1.5; }
+.admin-guide-footer { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 22px; }
+.admin-guide-footer span { color: #718692; font-size: 10px; line-height: 1.4; }
+.admin-guide-confirm { flex: 0 0 auto; min-height: 38px; padding: 9px 15px; border: 0; border-radius: 9px; color: #fff; background: #195c83; font: inherit; font-size: 12px; font-weight: 850; cursor: pointer; }
+.admin-guide-confirm:hover { background: #124766; }
+
+@media (max-width: 520px) {
+  .admin-guide-card { padding: 24px 19px; border-radius: 18px; }
+  .admin-guide-footer { align-items: stretch; flex-direction: column; }
+  .admin-guide-confirm { width: 100%; }
+}
+
 /* ---------- Public alert archive ---------- */
 
 .archive-alert-panel {

@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Safety Alerts and Travel Watch</title>
-  <link rel="stylesheet" href="{% static 'css/site.css' %}?v=20261022-travel-map-v8">
+  <link rel="stylesheet" href="{% static 'css/site.css' %}?v=20261025-notice-ui">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
 </head>
 <body class="page-subscriber-alerts">
@@ -18,7 +18,7 @@
         data-travel-url="{% url 'travel_alert_plan' %}"
         data-travel-location-url="{% url 'travel_location_area' %}"
         data-travel-stop-url="{% url 'travel_alert_stop' %}">
-    <a class="subscriber-back-link" href="{% url 'home' %}">← Back to emergency assistance</a>
+    <a class="subscriber-back-link" href="{% url 'home' %}"><span aria-hidden="true">←</span> Back to emergency assistance</a>
     <section class="subscriber-hero">
       <p class="eyebrow">Community safety network</p>
       <h1>Safety alerts and travel watch</h1>

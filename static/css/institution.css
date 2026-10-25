@@ -773,3 +773,39 @@ a { color: inherit; }
 .institution-page .institution-empty p {
   color: #61798b;
 }
+
+/* Keep back navigation readable on light portal surfaces. */
+.institution-back,
+.institution-back-link,
+.institution-page .institution-back,
+.institution-page .institution-back-link {
+  flex: 0 0 auto;
+  min-width: 0;
+  max-width: 100%;
+  border-color: #195c83;
+  color: #fff;
+  background: #195c83;
+  background-image: none;
+  box-shadow: 0 10px 20px rgba(25, 92, 131, .2);
+  animation: none;
+  white-space: nowrap;
+}
+
+.institution-back:hover,
+.institution-back-link:hover,
+.institution-page .institution-back:hover,
+.institution-page .institution-back-link:hover {
+  border-color: #124766;
+  color: #fff;
+  background: #124766;
+  box-shadow: 0 14px 26px rgba(25, 92, 131, .28);
+  transform: translateY(-2px);
+}
+
+@media (max-width: 420px) {
+  .institution-back,
+  .institution-back-link {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}

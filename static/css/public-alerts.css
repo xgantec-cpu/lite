@@ -137,15 +137,24 @@
 
 .public-alert-history-back {
   display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 9px 14px;
+  border: 1px solid #195c83;
+  border-radius: 10px;
   margin-bottom: 18px;
-  color: #183b4b;
+  color: #fff;
+  background: #195c83;
+  box-shadow: 0 8px 16px rgba(25, 92, 131, .18);
   font-size: 13px;
   font-weight: 850;
   text-decoration: none;
 }
 
 .public-alert-history-back:hover {
-  color: #d71920;
+  color: #fff;
+  background: #124766;
 }
 
 .public-alert-history-hero {

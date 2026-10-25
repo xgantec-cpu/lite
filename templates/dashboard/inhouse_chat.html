@@ -163,11 +163,15 @@
     });
     scrollMessages();
     resizeBody();
+    let socket = null;
     if (token && conversationId && window.WebSocket) {
       const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-      const socket = new WebSocket(`${protocol}://${window.location.host}/ws/inhouse/chat/${conversationId}/?token=${encodeURIComponent(token)}`);
+      socket = new WebSocket(`${protocol}://${window.location.host}/ws/inhouse/chat/${conversationId}/?token=${encodeURIComponent(token)}`);
       socket.addEventListener('message', refresh);
     }
+    document.addEventListener('rapid-response:system-ping', () => {
+      if (!socket || socket.readyState !== WebSocket.OPEN) refresh();
+    });
   })();
 </script>
 <script src="{% static 'js/rtc-chat.js' %}?v=20261022-portal-audio"></script>

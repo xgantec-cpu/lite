@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ alert.title }} · Public Safety Alert</title>
-  <link rel="stylesheet" href="{% static 'css/site.css' %}?v=20261023-national-alerts">
+  <link rel="stylesheet" href="{% static 'css/site.css' %}?v=20261025-notice-ui">
 </head>
 <body class="page-public-alert-detail">
   <header class="public-motto-header"><span>Saving lives is better.</span></header>
@@ -17,30 +17,34 @@
           <span class="public-alert-detail-symbol" aria-hidden="true">⚠</span>
           <span class="public-alert-detail-badge">PUBLIC SAFETY ALERT</span>
         </div>
-        <span class="public-alert-detail-severity">Urgent notice</span>
+        <div class="public-alert-detail-date-block">
+          <span class="public-alert-detail-severity">Urgent notice</span>
+          <time class="public-alert-detail-date" datetime="{{ alert.created_at|date:'c' }}">{{ alert.created_at|date:"j F Y · H:i" }}</time>
+        </div>
       </header>
-      <p class="public-alert-detail-kicker">{% if alert.is_national %}Countrywide safety information{% else %}District safety information{% endif %}</p>
+      <p class="public-alert-detail-kicker">Notice for {% if alert.is_national %}Uganda · Whole country<span class="public-alert-detail-scope-note"> · Countrywide safety information</span>{% else %}{{ alert.area.name }} district{% endif %}</p>
       <h1 id="public-alert-title">{{ alert.title }}</h1>
-      <div class="public-alert-notice-strip" role="note">
+      <section class="public-alert-notice-strip" role="note" aria-labelledby="public-alert-notice-heading">
         <span class="public-alert-notice-icon" aria-hidden="true">!</span>
         <div>
-          <strong>Important notice</strong>
-          <p>{% if alert.is_national %}This is an official public safety message for people across Uganda.{% else %}This is an official public safety message for the district shown below.{% endif %}</p>
+          <strong id="public-alert-notice-heading">Notice</strong>
+          <p class="public-alert-detail-body">{{ alert.body }}</p>
         </div>
-      </div>
-      <p class="public-alert-detail-body">{{ alert.body }}</p>
-      <div class="public-alert-detail-meta">
-        <span><b>{% if alert.is_national %}Audience{% else %}District{% endif %}</b>{% if alert.is_national %}Uganda · Whole country{% else %}{{ alert.area.name }}{% endif %}</span>
-        <time datetime="{{ alert.created_at|date:'c' }}"><b>Published</b>{{ alert.created_at|date:"j F Y, H:i" }}</time>
-      </div>
-      <div class="public-alert-detail-guidance">
-        <strong>Stay aware</strong>
-        <p>Follow official instructions, avoid sharing private case details, and contact emergency services if you are in immediate danger.</p>
-      </div>
-      <div class="public-alert-detail-actions">
-        <a class="public-alert-detail-primary" href="{% url 'subscriber_alerts' %}">Manage alert places</a>
-        <a class="public-alert-detail-secondary" href="{% url 'home' %}">Emergency assistance</a>
-      </div>
+      </section>
+      <footer class="public-alert-detail-footer">
+        <div class="public-alert-detail-meta">
+          <span><b>{% if alert.is_national %}Audience{% else %}District{% endif %}</b>{% if alert.is_national %}Uganda · Whole country{% else %}{{ alert.area.name }}{% endif %}</span>
+          <span><b>Published</b>{{ alert.created_at|date:"j F Y, H:i" }}</span>
+        </div>
+        <div class="public-alert-detail-guidance">
+          <strong>Stay aware</strong>
+          <p>Follow official instructions, avoid sharing private case details, and contact emergency services if you are in immediate danger.</p>
+        </div>
+        <div class="public-alert-detail-actions">
+          <a class="public-alert-detail-primary" href="{% url 'subscriber_alerts' %}">Manage alert places</a>
+          <a class="public-alert-detail-secondary" href="{% url 'home' %}">Emergency assistance</a>
+        </div>
+      </footer>
     </article>
   </main>
 </body>

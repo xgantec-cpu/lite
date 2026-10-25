@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Referred case map · {{ profile.institution_name }}</title>
-  <link rel="stylesheet" href="{% static 'css/institution.css' %}?v=20261023-portal-contrast">
+  <link rel="stylesheet" href="{% static 'css/institution.css' %}?v=20261025-back-ui">
   <link rel="stylesheet" href="{% static 'css/institution-dark.css' %}?v=20261023-portal-contrast">
   <link rel="stylesheet" href="{% static 'css/dashboard/report-builder.css' %}?v=20261023-report-footer">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
@@ -22,7 +22,7 @@
     </div>
   </header>
   <main class="institution-shell" data-report-root>
-    <a class="institution-back-link" href="{% url 'institution_portal' %}">Back to cases</a>
+    <a class="institution-back-link" href="{% url 'institution_portal' %}"><span aria-hidden="true">←</span> Back to cases</a>
     <div class="institution-heading institution-map-heading" data-report-section data-report-label="Map summary">
       <div><p class="institution-kicker">Secure geospatial view</p><h1>Referred case map</h1><p>{% if selected_case %}Tracking {{ selected_case.reference }} and your other referred cases.{% else %}View the cases sent to this institution on one map.{% endif %}</p></div>
       <div class="institution-map-summary"><strong>{{ sent_case_count }}</strong><span>sent cases</span><small>{{ mapped_case_count }} mapped</small></div>

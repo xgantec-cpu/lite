@@ -175,4 +175,5 @@
   }
 
   if (liveUrl) window.setInterval(refreshPie, 30000);
+  document.addEventListener("rapid-response:system-ping", refreshPie);
 }());

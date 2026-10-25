@@ -185,6 +185,7 @@
         return;
       }
       const data = await response.json();
+      document.dispatchEvent(new CustomEvent("rapid-response:system-ping", {detail: data}));
       const incoming = data.incoming || {};
       const referrals = data.referrals || {};
       const messages = data.messages || {};

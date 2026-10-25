@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Institution sign in · Rapid Response</title>
-  <link rel="stylesheet" href="{% static 'css/institution.css' %}?v=20261023-portal-contrast">
+  <link rel="stylesheet" href="{% static 'css/institution.css' %}?v=20261025-back-ui">
   <link rel="stylesheet" href="{% static 'css/institution-dark.css' %}?v=20261023-portal-contrast">
 </head>
 <body class="institution-login-page">
@@ -35,7 +35,7 @@
       <input id="password" name="password" type="password" autocomplete="current-password" required>
       <button class="institution-button" type="submit">Sign in to cases <span>→</span></button>
     </form>
-    <a class="institution-back" href="{% url 'home' %}">Back to emergency request page</a>
+    <a class="institution-back" href="{% url 'home' %}"><span aria-hidden="true">←</span> Back to emergency request page</a>
     </section>
   </main>
   <script>
