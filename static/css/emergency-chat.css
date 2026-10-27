@@ -924,3 +924,36 @@ body:has(.emergency-chat-widget) .official-chat-widget {
 html[data-theme="dark"] .emergency-chat-file-name { color: #b8d3df; }
 html[data-theme="dark"] .emergency-call-mic { color: #79d8a8; }
 html[data-theme="dark"] .emergency-chat-message > a { color: #8bdaf3; }
+
+.emergency-chat-page {
+  width: 100%;
+  max-width: none;
+  padding-right: clamp(16px, 3vw, 42px);
+  padding-left: clamp(16px, 3vw, 42px);
+}
+
+.emergency-chat-fullscreen {
+  width: 100%;
+  max-width: none;
+}
+
+.emergency-chat-full-panel {
+  height: calc(100vh - 190px);
+  min-height: 560px;
+}
+
+@media (max-width: 700px) {
+  .emergency-chat-page-header {
+    margin-bottom: 24px;
+  }
+
+  .emergency-chat-page-title {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .emergency-chat-full-panel {
+    height: calc(100vh - 190px);
+    min-height: 520px;
+  }
+}

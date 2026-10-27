@@ -150,3 +150,35 @@ body.inhouse-chat-expanded {
     display: none;
   }
 }
+
+.inhouse-chat-shell {
+  height: calc(100vh - 230px);
+  min-height: 620px;
+}
+
+.inhouse-contact-panel,
+.inhouse-conversation {
+  min-height: 0;
+}
+
+.inhouse-contact-list {
+  max-height: calc(100% - 78px);
+  overflow-y: auto;
+}
+
+.inhouse-messages {
+  max-height: none;
+  min-height: 0;
+}
+
+@media (max-width: 760px) {
+  .inhouse-chat-shell {
+    height: calc(100vh - 250px);
+    min-height: 560px;
+  }
+
+  .inhouse-contact-list {
+    max-height: none;
+    overflow-y: visible;
+  }
+}

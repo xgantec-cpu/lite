@@ -12,6 +12,7 @@
   const notificationCount = notificationMenu?.querySelector("[data-dashboard-notifications-count]");
   const badgeSelectors = {
     incoming: "[data-dashboard-nav-count]",
+    chats: "[data-dashboard-chat-case-count]",
     referrals: "[data-dashboard-referral-count]",
     messages: "[data-dashboard-message-count]",
   };
@@ -22,6 +23,7 @@
   let serverPendingCount = 0;
   let unreadNotifications = 0;
   const notifications = [];
+  let toastStack = null;
 
   const setBadge = (selector, value) => {
     const badge = document.querySelector(selector);
@@ -51,6 +53,50 @@
   };
 
   const formatNotificationTime = (date) => date.toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"});
+
+  const showLiveToast = (notification) => {
+    if (!notification.popup) return;
+    if (!toastStack) {
+      toastStack = document.createElement("div");
+      toastStack.className = "dashboard-live-toast-stack";
+      toastStack.setAttribute("aria-live", "assertive");
+      document.body.append(toastStack);
+    }
+    const toast = document.createElement("article");
+    toast.className = `dashboard-live-toast dashboard-live-toast-${notification.tone}`;
+    const mark = document.createElement("span");
+    mark.className = "dashboard-live-toast-mark";
+    mark.textContent = "!";
+    const copy = document.createElement("div");
+    copy.className = "dashboard-live-toast-copy";
+    const title = document.createElement("strong");
+    title.textContent = notification.title;
+    const detail = document.createElement("span");
+    detail.textContent = notification.detail;
+    copy.append(title, detail);
+    const actions = document.createElement("div");
+    actions.className = "dashboard-live-toast-actions";
+    if (notification.href) {
+      const open = document.createElement("a");
+      open.href = notification.href;
+      open.textContent = "Open case";
+      actions.append(open);
+    }
+    const close = document.createElement("button");
+    close.type = "button";
+    close.setAttribute("aria-label", "Dismiss chat notification");
+    close.textContent = "×";
+    actions.append(close);
+    toast.append(mark, copy, actions);
+    toastStack.prepend(toast);
+    const remove = () => {
+      if (!toast.isConnected) return;
+      toast.classList.add("is-dismissing");
+      window.setTimeout(() => toast.remove(), 220);
+    };
+    close.addEventListener("click", remove);
+    window.setTimeout(remove, 8000);
+  };
 
   const stopPollingForSession = () => {
     if (pollingStopped) return;
@@ -126,14 +172,16 @@
     });
   };
 
-  const addNotification = ({title, detail, href, tone = "blue", key}) => {
+  const addNotification = ({title, detail, href, tone = "blue", key, popup = false}) => {
     if (!notificationList || notifications.some((notification) => notification.key === key)) return;
-    notifications.unshift({title, detail, href, tone, key, unread: true, time: formatNotificationTime(new Date())});
+    const notification = {title, detail, href, tone, key, popup, unread: true, time: formatNotificationTime(new Date())};
+    notifications.unshift(notification);
     if (notifications.length > 20) notifications.pop();
     unreadNotifications = Math.min(unreadNotifications + 1, 99);
     renderNotifications();
     updateNotificationCount();
     syncNotificationVisibility();
+    showLiveToast(notification);
   };
 
   const closeNotificationMenu = () => {
@@ -189,8 +237,10 @@
       const incoming = data.incoming || {};
       const referrals = data.referrals || {};
       const messages = data.messages || {};
-      serverPendingCount = (Number(incoming.count) || 0) + (Number(referrals.unread) || 0) + (Number(messages.unread) || 0);
+      const chats = data.chats || {};
+      serverPendingCount = (Number(incoming.count) || 0) + (Number(referrals.unread) || 0) + (Number(messages.unread) || 0) + (Number(chats.pending) || 0) + (Number(chats.unread) || 0);
       setBadge(badgeSelectors.incoming, incoming.count);
+      setBadge(badgeSelectors.chats, (Number(chats.pending) || 0) + (Number(chats.unread) || 0));
       setBadge(badgeSelectors.referrals, referrals.unread);
       setBadge(badgeSelectors.messages, messages.unread);
       syncNotificationVisibility();
@@ -223,6 +273,26 @@
             key: `message-${messages.latest_id}`,
           });
         }
+        if (chats.latest_id && chats.latest_id !== snapshot.chats.latest_id) {
+          addNotification({
+            title: "Case wants to chat",
+            detail: `${chats.latest_reference || "An emergency case"} is waiting for a response conversation.`,
+            href: chats.latest_href || page.dataset.dashboardEmergencyChatsUrl || page.dataset.dashboardIncomingUrl,
+            tone: chats.latest_priority === "critical" ? "red" : "orange",
+            key: `chat-request-${chats.latest_id}`,
+            popup: true,
+          });
+        }
+        if (chats.latest_message_id && chats.latest_message_id !== snapshot.chats.latest_message_id) {
+          addNotification({
+            title: "New message from case sender",
+            detail: `${chats.latest_message_reference || "An emergency case"} sent a message in the secure chat.`,
+            href: chats.latest_message_href || page.dataset.dashboardEmergencyChatsUrl || page.dataset.dashboardIncomingUrl,
+            tone: "red",
+            key: `chat-message-${chats.latest_message_id}`,
+            popup: true,
+          });
+        }
       } else {
         if (incoming.count) {
           addNotification({
@@ -251,8 +321,28 @@
             key: `pending-messages-${messages.latest_id || messages.unread}`,
           });
         }
+        if (chats.pending) {
+          addNotification({
+            title: "Case wants to chat",
+            detail: `${chats.latest_reference || "An emergency case"} is waiting for a response conversation.`,
+            href: chats.latest_href || page.dataset.dashboardEmergencyChatsUrl || page.dataset.dashboardIncomingUrl,
+            tone: chats.latest_priority === "critical" ? "red" : "orange",
+            key: `chat-request-${chats.latest_id || chats.pending}`,
+            popup: true,
+          });
+        }
+        if (chats.unread) {
+          addNotification({
+            title: "New message from case sender",
+            detail: `${chats.latest_message_reference || "An emergency case"} sent a message in the secure chat.`,
+            href: chats.latest_message_href || page.dataset.dashboardEmergencyChatsUrl || page.dataset.dashboardIncomingUrl,
+            tone: "red",
+            key: `chat-message-${chats.latest_message_id || chats.unread}`,
+            popup: true,
+          });
+        }
       }
-      snapshot = {incoming, referrals, messages};
+      snapshot = {incoming, referrals, messages, chats};
     } catch (error) {
       // The next ping retries after a temporary network interruption.
     } finally {

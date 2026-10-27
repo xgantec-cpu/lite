@@ -6,3 +6,4 @@ cryptography>=47,<51
 psycopg[binary]>=3.1,<4
 pywebpush>=2,<3
 py-vapid>=1.9,<2
+qrcode>=8,<9

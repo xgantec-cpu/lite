@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Quick video help</title>
-  <link rel="stylesheet" href="{% static 'css/site.css' %}?v=20261018"><link rel="stylesheet" href="{% static 'css/form-errors.css' %}?v=20261001"><link rel="stylesheet" href="{% static 'css/video-help.css' %}?v=20261031"><link rel="stylesheet" href="{% static 'css/professional.css' %}?v=20261001">
+  <link rel="stylesheet" href="{% static 'css/site.css' %}?v=20261026-default-buttons"><link rel="stylesheet" href="{% static 'css/form-errors.css' %}?v=20261001"><link rel="stylesheet" href="{% static 'css/video-help.css' %}?v=20261031"><link rel="stylesheet" href="{% static 'css/professional.css' %}?v=20261001">
 </head>
 <body class="quick-page">
 <header class="public-motto-header"><span>Saving lives is better.</span></header>
@@ -17,7 +17,7 @@
   {% if error %}<div class="error">{{ error }}</div>{% endif %}
   <form method="post" id="quick-form" enctype="multipart/form-data">{% csrf_token %}<input type="hidden" name="idempotency_key" value="{{ idempotency_key }}">
     <input type="hidden" name="latitude" id="quick-latitude"><input type="hidden" name="longitude" id="quick-longitude"><input type="hidden" name="location_accuracy" id="quick-accuracy"><input type="hidden" name="location_source" id="quick-location-source" value="user"><input type="hidden" name="client_uuid" id="quick-client-uuid"><input type="hidden" name="recording_duration" id="quick-duration"><input type="file" name="video" id="quick-video-file" accept="video/*" hidden>
-    <div class="quick-preview-wrap"><video id="quick-preview" playsinline muted autoplay></video><div class="quick-overlay" id="quick-overlay"><button class="quick-overlay-trigger" type="button" id="quick-camera-toggle" aria-label="Start recording" aria-pressed="false"><span class="record-ring"></span><span class="quick-toggle-label" id="quick-toggle-label">Start</span></button><strong id="quick-overlay-label">Tap the red circle to start</strong></div><button class="quick-camera-switch" type="button" id="quick-camera-switch">Use front camera</button></div>
+    <div class="quick-preview-wrap"><video id="quick-preview" playsinline muted autoplay></video><div class="quick-overlay" id="quick-overlay"><button class="quick-overlay-trigger" type="button" id="quick-camera-toggle" aria-label="Start recording" aria-pressed="false"><span class="record-ring"></span><span class="quick-toggle-label" id="quick-toggle-label">Start</span></button><strong id="quick-overlay-label">Tap the red circle to start</strong></div><button class="quick-camera-switch" type="button" id="quick-camera-switch" aria-label="Switch to front camera"><span class="quick-camera-switch-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M7 7h5V2M17 17h-5v5M7.5 7.5A7 7 0 0 1 19 9M16.5 16.5A7 7 0 0 1 5 15" /></svg></span><small id="quick-camera-switch-label">Front</small></button></div>
     <div class="quick-status"><span id="quick-status">Location will be requested when you begin.</span><strong id="quick-timer">00:00 / 00:20</strong></div>
     <p class="quick-note">Tap Start to record and Stop to finish. The video submits automatically after recording, or at 20 seconds. Maximum quality is 720p.</p>
   </form>
@@ -34,6 +34,7 @@ const quickOverlayLabel = document.getElementById('quick-overlay-label');
 const quickToggleLabel = document.getElementById('quick-toggle-label');
 const quickCameraToggle = document.getElementById('quick-camera-toggle');
 const quickCameraSwitch = document.getElementById('quick-camera-switch');
+const quickCameraSwitchLabel = document.getElementById('quick-camera-switch-label');
 const quickSendBar = document.getElementById('quick-send-bar');
 const quickSendButton = document.getElementById('quick-send');
 let quickRecorder, quickStream, quickChunks = [], quickStarted, quickInterval, quickSubmitAfterStop = false;
@@ -251,7 +252,13 @@ function quickSubmitForm() {
 }
 
 function quickCameraLabel() {
-  return quickFacingMode === 'environment' ? 'Use front camera' : 'Use back camera';
+  return quickFacingMode === 'environment' ? 'Front' : 'Back';
+}
+
+function quickUpdateCameraSwitch() {
+  const label = quickCameraLabel();
+  quickCameraSwitchLabel.textContent = label;
+  quickCameraSwitch.setAttribute('aria-label', `Switch to ${label.toLowerCase()} camera`);
 }
 
 async function quickOpenCamera() {
@@ -281,7 +288,7 @@ async function quickOpenCamera() {
   quickPreview.muted = true;
   quickPreview.autoplay = true;
   await quickPreview.play().catch(() => {});
-  quickCameraSwitch.textContent = quickCameraLabel();
+  quickUpdateCameraSwitch();
   quickOverlay.hidden = false;
   quickOverlay.classList.remove('is-recording');
   quickOverlayLabel.textContent = 'Tap the red circle to start';
@@ -300,11 +307,11 @@ async function quickSwitchCamera() {
     quickFacingMode = quickFacingMode === 'environment' ? 'user' : 'environment';
     try {
       await videoTrack.applyConstraints({facingMode: {exact: quickFacingMode}});
-      quickCameraSwitch.textContent = quickCameraLabel();
+      quickUpdateCameraSwitch();
       quickStatus.textContent = quickFacingMode === 'user' ? 'Front camera active' : 'Back camera active';
     } catch (error) {
       quickFacingMode = previousFacingMode;
-      quickCameraSwitch.textContent = quickCameraLabel();
+      quickUpdateCameraSwitch();
       quickStatus.textContent = 'Stop recording before switching cameras on this device';
     }
     return;
@@ -319,7 +326,7 @@ async function quickSwitchCamera() {
     quickStatus.textContent = quickFacingMode === 'user' ? 'Front camera ready — tap the red circle to record' : 'Back camera ready — tap the red circle to record';
   } catch (error) {
     quickFacingMode = quickFacingMode === 'environment' ? 'user' : 'environment';
-    quickCameraSwitch.textContent = quickCameraLabel();
+    quickUpdateCameraSwitch();
     quickStatus.textContent = 'That camera is unavailable on this device';
   } finally {
     quickCameraBusy = false;

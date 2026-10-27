@@ -1,0 +1,91 @@
+.pair-device-page {
+  display: grid;
+  min-height: calc(100vh - 160px);
+  place-items: center;
+  padding: 18px 0;
+}
+
+.pair-device-card {
+  width: min(100%, 560px);
+  padding: 42px clamp(24px, 6vw, 58px);
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background: var(--panel);
+  box-shadow: 0 20px 50px rgba(17, 24, 39, .12);
+  text-align: center;
+}
+
+.pair-device-icon {
+  display: grid;
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 18px;
+  place-items: center;
+  border-radius: 16px;
+  color: #fff;
+  background: linear-gradient(145deg, #247da5, #195c83);
+  box-shadow: 0 8px 0 #124766, 0 16px 24px rgba(25, 92, 131, .18);
+  font-size: 28px;
+  font-weight: 900;
+}
+
+.pair-device-card h1 {
+  margin: 5px 0 10px;
+  color: var(--ink);
+  font-size: clamp(26px, 5vw, 38px);
+  letter-spacing: -.04em;
+}
+
+.pair-device-card > p {
+  margin: 0 auto;
+  max-width: 430px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.pair-device-notice {
+  display: grid;
+  gap: 4px;
+  margin: 22px 0 16px;
+  padding: 13px 15px;
+  border: 1px solid #b9dfcc;
+  border-radius: 12px;
+  color: #4d7863;
+  background: #f2fbf5;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.pair-device-notice strong {
+  color: #165c40;
+  font-size: 12px;
+}
+
+.pair-device-button {
+  width: 100%;
+  min-height: 48px;
+}
+
+.pair-device-status {
+  min-height: 20px;
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.pair-device-status[data-state="success"] { color: #18704d; }
+.pair-device-status[data-state="error"] { color: #b52f2b; }
+
+.pair-device-back {
+  display: inline-flex;
+  margin-top: 22px;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.pair-device-invalid .button {
+  margin-top: 22px;
+}

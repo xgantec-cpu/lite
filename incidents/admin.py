@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django import forms
 
-from .models import AreaAlert, CallRequest, CaseMessage, EmergencyChatCall, EmergencyChatMessage, EmergencyChatRoom, EmergencyRequest, HospitalFacility, Incident, IncidentFavorite, IncidentNote, InHouseConversation, InHouseMessage, InstitutionProfile, LocationArea, LocationPing, MFAProfile, OperationsAccess, PublicAlertSubscription, Recording, Referral, ResponseProfile, SecurityEvent, TravelSafetyPlan
+from .models import AdminBrowserPairing, AreaAlert, CallRequest, CaseMessage, EmergencyChatCall, EmergencyChatMessage, EmergencyChatRoom, EmergencyRequest, HospitalFacility, Incident, IncidentFavorite, IncidentNote, InHouseConversation, InHouseMessage, InstitutionProfile, LocationArea, LocationPing, MFAProfile, OperationsAccess, PublicAlertSubscription, Recording, Referral, ResponseProfile, SecurityEvent, TravelSafetyPlan
 
 
 class ResponseProfileAdminForm(forms.ModelForm):
@@ -98,6 +98,27 @@ class ResponseProfileAdmin(admin.ModelAdmin):
 
     def has_change_permission(self, request, obj=None):
         return request.user.is_superuser
+
+    def has_delete_permission(self, request, obj=None):
+        return request.user.is_superuser
+
+
+@admin.register(AdminBrowserPairing)
+class AdminBrowserPairingAdmin(admin.ModelAdmin):
+    list_display = (
+        "user", "device_label", "active", "critical_alert_enabled",
+        "critical_alert_threshold", "last_seen_at", "paired_at",
+    )
+    list_filter = ("active", "critical_alert_enabled")
+    search_fields = ("user__username", "user__email", "device_label", "endpoint_hash")
+    readonly_fields = (
+        "user", "pairing_token_hash", "pairing_expires_at", "endpoint_hash",
+        "paired_at", "last_seen_at", "created_at", "updated_at",
+    )
+    exclude = ("endpoint", "p256dh", "auth")
+
+    def has_add_permission(self, request):
+        return False
 
     def has_delete_permission(self, request, obj=None):
         return request.user.is_superuser

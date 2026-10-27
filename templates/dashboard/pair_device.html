@@ -1,0 +1,17 @@
+{% extends "dashboard/base.html" %}
+{% load static %}
+
+{% block title %}Pair admin browser{% endblock %}
+
+{% block extra_css %}<link rel="stylesheet" href="{% static 'css/dashboard/pair-device.css' %}?v=20261026-pair-device">{% endblock %}
+
+{% block content %}
+<section class="pair-device-page" data-admin-pair-device data-pair-endpoint="{{ request.path }}" data-public-key="{{ webpush_public_key }}" data-csrf="{{ csrf_token }}">
+  {% if pairing_invalid %}
+    <div class="pair-device-card pair-device-invalid"><span class="pair-device-icon" aria-hidden="true">!</span><div class="eyebrow">Pairing link expired</div><h1>Generate a new QR code</h1><p>This pairing link is invalid, expired, or has already been used. Return to the administrator profile and create a fresh code.</p><a class="button button-primary" href="{% url 'dashboard_profile' %}">Back to profile <span>→</span></a></div>
+  {% else %}
+    <div class="pair-device-card"><span class="pair-device-icon" aria-hidden="true">⌁</span><div class="eyebrow">Rapid Response · Trusted device</div><h1>Pair this browser</h1><p>Signed in as <strong>{{ pairing_owner }}</strong>. Pair this phone browser to receive private critical backlog alerts for this administrator.</p><div class="pair-device-notice"><strong>Only this browser will be used.</strong><span>Allow notifications when your browser asks, then keep this device signed in.</span></div><button class="button button-primary pair-device-button" data-pair-device-start type="button">Pair this browser <span>→</span></button><div class="pair-device-status" data-pair-device-status role="status" aria-live="polite">Ready to request notification permission.</div><a class="pair-device-back" href="{% url 'dashboard_profile' %}">Back to profile</a></div>
+  {% endif %}
+</section>
+{% if not pairing_invalid %}<script src="{% static 'js/dashboard-pair-device.js' %}?v=20261026-pair-device"></script>{% endif %}
+{% endblock %}

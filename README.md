@@ -21,6 +21,7 @@ This is the first Django MVP for a location-aware emergency request platform.
 - TOTP multi-factor authentication for responder, institution, and production Django admin access, with replay protection.
 - PostgreSQL configuration through `DATABASE_URL`, with an explicit `DJANGO_USE_SQLITE=1` option for SQLite deployments.
 - A separate parent-administrator password gate protects the Django admin section from the responder dashboard.
+- A responder can pair one trusted phone browser with a QR code for private critical-backlog push alerts.
 
 ## Run locally
 
@@ -54,6 +55,7 @@ python3 manage.py runserver
 ```
 
 Copy `.env.example` for deployment configuration. Keep the real `.env`, database password, Django secret, and field-encryption key outside source control.
+After every deployment, run `python manage.py migrate` against the active database before opening the site. This creates new tables such as the trusted admin-browser pairing table.
 
 ## WebSockets and district boundaries
 

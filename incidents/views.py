@@ -8,12 +8,12 @@ from django.core.cache import cache
 from django.core.files.storage import default_storage
 from django.db import IntegrityError, transaction
 from django.db.models import Count, Q
-from django.http import FileResponse, HttpRequest, HttpResponse, HttpResponseForbidden, JsonResponse
+from django.http import FileResponse, HttpRequest, HttpResponse, HttpResponseForbidden, HttpResponseNotAllowed, JsonResponse
 from django.core.paginator import Paginator
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlencode
 from urllib.request import Request as UrlRequest, urlopen
 from django.utils import timezone
 from decimal import Decimal, InvalidOperation
@@ -36,7 +36,7 @@ from .audit import record_security_event
 from .device_detection import detect_device
 from .geography import area_name_for_boundary, boundary_features, boundary_name_for_point, route_area_names
 from .healthcare import matching_area_ids
-from .models import AreaAlert, CallRequest, CaseMessage, EmergencyChatCall, EmergencyChatMessage, EmergencyChatRoom, EmergencyRequest, HospitalFacility, Incident, IncidentFavorite, IncidentNote, InHouseConversation, InHouseMessage, InstitutionProfile, LocationArea, LocationPing, MFAProfile, OperationsAccess, PublicAlertSubscription, Recording, Referral, ResponseProfile, TravelSafetyPlan, area_routing_code
+from .models import AdminBrowserPairing, AreaAlert, CallRequest, CaseMessage, EmergencyChatCall, EmergencyChatMessage, EmergencyChatRoom, EmergencyRequest, HospitalFacility, Incident, IncidentFavorite, IncidentNote, InHouseConversation, InHouseMessage, InstitutionProfile, LocationArea, LocationPing, MFAProfile, OperationsAccess, PublicAlertSubscription, Recording, Referral, ResponseProfile, TravelSafetyPlan, area_routing_code
 from .mfa import generate_secret, otpauth_uri, verify_totp
 from .realtime import broadcast_case_chat_update, broadcast_emergency_chat_update, broadcast_inhouse_chat_update
 from .websocket_auth import make_public_chat_token, make_websocket_token, public_chat_token_identity, public_chat_token_matches
@@ -46,6 +46,8 @@ CRITICAL_TRACKING_WINDOW = timedelta(minutes=30)
 PUBLIC_ALERT_LIFETIME = timedelta(hours=4)
 PUBLIC_ALERT_SUBSCRIPTION_COOKIE = "rapid_response_public_alert_subscription"
 PUBLIC_ALERT_SUBSCRIPTION_COOKIE_MAX_AGE = 60 * 60 * 24 * 365
+ADMIN_PAIRING_TOKEN_TTL = timedelta(minutes=10)
+ADMIN_CRITICAL_ALERT_COOLDOWN = timedelta(minutes=30)
 TRACKING_OPEN_STATUSES = {"new", "acknowledged", "responding"}
 MAX_VIDEO_UPLOAD_BYTES = 25 * 1024 * 1024
 MAX_AUDIO_UPLOAD_BYTES = 10 * 1024 * 1024
@@ -367,6 +369,13 @@ def home(request: HttpRequest) -> HttpResponse:
                     request.session["request_id"] = existing_request.request_id
                     return redirect("submit_success")
                 raise
+            if incident.assigned_admin_id:
+                transaction.on_commit(
+                    lambda admin_id=incident.assigned_admin_id: _safe_send_admin_critical_backlog_alert(
+                        admin_id,
+                        request,
+                    )
+                )
             request.session["request_id"] = emergency_request.request_id
             return redirect("submit_success")
     else:
@@ -383,6 +392,142 @@ def service_worker(request: HttpRequest) -> HttpResponse:
     response["Cache-Control"] = "no-cache, no-store, must-revalidate"
     response["Service-Worker-Allowed"] = "/"
     return response
+
+
+def _admin_pairing_session_key(user):
+    return f"admin-browser-pairing-token:{user.pk}"
+
+
+def _rotate_admin_browser_pairing(request, user):
+    raw_token = secrets.token_urlsafe(32)
+    now = timezone.now()
+    pairing, _ = AdminBrowserPairing.objects.get_or_create(user=user)
+    pairing.pairing_token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+    pairing.pairing_expires_at = now + ADMIN_PAIRING_TOKEN_TTL
+    pairing.endpoint_hash = None
+    pairing.endpoint = ""
+    pairing.p256dh = ""
+    pairing.auth = ""
+    pairing.device_label = ""
+    pairing.active = False
+    pairing.paired_at = None
+    pairing.last_seen_at = None
+    pairing.last_critical_alert_count = 0
+    pairing.last_critical_alert_at = None
+    pairing.save(update_fields=[
+        "pairing_token_hash", "pairing_expires_at", "endpoint_hash", "endpoint", "p256dh", "auth",
+        "device_label", "active", "paired_at", "last_seen_at", "last_critical_alert_count",
+        "last_critical_alert_at", "updated_at",
+    ])
+    request.session[_admin_pairing_session_key(user)] = raw_token
+    request.session.modified = True
+    return pairing, raw_token
+
+
+def _admin_pairing_qr_data_uri(value):
+    if not value:
+        return ""
+    try:
+        import qrcode
+        from qrcode.image.svg import SvgPathImage
+
+        qr = qrcode.QRCode(version=None, error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=8, border=2)
+        qr.add_data(value)
+        qr.make(fit=True)
+        image = qr.make_image(image_factory=SvgPathImage)
+        svg = image.to_string()
+        if isinstance(svg, str):
+            svg = svg.encode("utf-8")
+        encoded = base64.b64encode(svg).decode("ascii")
+        return f"data:image/svg+xml;base64,{encoded}"
+    except ImportError:
+        logger.warning("qrcode is not installed; rendering the browser pairing link without a QR image.")
+    except Exception:
+        logger.exception("The admin browser pairing QR code could not be generated.")
+    return ""
+
+
+def _admin_pairing_context(request, user):
+    pairing = AdminBrowserPairing.objects.filter(user=user).first()
+    raw_token = request.session.get(_admin_pairing_session_key(user))
+    if pairing is None:
+        pairing, raw_token = _rotate_admin_browser_pairing(request, user)
+    elif not pairing.active:
+        token_valid = bool(
+            raw_token
+            and pairing.pairing_token_hash == hashlib.sha256(str(raw_token).encode("utf-8")).hexdigest()
+            and pairing.pairing_expires_at
+            and pairing.pairing_expires_at > timezone.now()
+        )
+        if not token_valid:
+            pairing, raw_token = _rotate_admin_browser_pairing(request, user)
+    else:
+        raw_token = None
+
+    pairing_url = ""
+    pairing_qr = ""
+    if raw_token and pairing.pairing_expires_at and pairing.pairing_expires_at > timezone.now():
+        pairing_url = request.build_absolute_uri(reverse("dashboard_pair_device", args=[raw_token]))
+        pairing_qr = _admin_pairing_qr_data_uri(pairing_url)
+    return {
+        "pairing": pairing,
+        "pairing_url": pairing_url,
+        "pairing_qr": pairing_qr,
+        "pairing_token_expires_at": pairing.pairing_expires_at if pairing_url else None,
+    }
+
+
+@login_required
+def dashboard_pair_device(request: HttpRequest, token: str) -> HttpResponse:
+    if not _can_access_dashboard(request.user):
+        return _dashboard_inactive_redirect(request)
+    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    pairing = AdminBrowserPairing.objects.filter(
+        pairing_token_hash=token_hash,
+        pairing_expires_at__gt=timezone.now(),
+    ).first()
+    if pairing is None or pairing.user_id != request.user.pk:
+        return render(request, "dashboard/pair_device.html", {"pairing_invalid": True}, status=410)
+    if request.method == "POST":
+        try:
+            payload = json.loads(request.body.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return JsonResponse({"error": "The browser subscription payload is invalid."}, status=400)
+        endpoint = str(payload.get("endpoint") or "").strip()
+        keys = payload.get("keys") or {}
+        p256dh = str(keys.get("p256dh") or "").strip()
+        auth = str(keys.get("auth") or "").strip()
+        if not endpoint.startswith("https://") or len(endpoint) > 2048 or not p256dh or not auth:
+            return JsonResponse({"error": "The browser did not provide a valid push subscription."}, status=400)
+        endpoint_hash = hashlib.sha256(endpoint.encode("utf-8")).hexdigest()
+        now = timezone.now()
+        with transaction.atomic():
+            AdminBrowserPairing.objects.filter(endpoint_hash=endpoint_hash).exclude(pk=pairing.pk).update(active=False)
+            pairing.endpoint_hash = endpoint_hash
+            pairing.endpoint = endpoint
+            pairing.p256dh = p256dh
+            pairing.auth = auth
+            pairing.device_label = str(payload.get("device_label") or "Admin browser").strip()[:120]
+            pairing.active = True
+            pairing.paired_at = now
+            pairing.last_seen_at = now
+            pairing.pairing_token_hash = None
+            pairing.pairing_expires_at = None
+            pairing.last_critical_alert_count = 0
+            pairing.last_critical_alert_at = None
+            pairing.save(update_fields=[
+                "endpoint_hash", "endpoint", "p256dh", "auth", "device_label", "active", "paired_at",
+                "last_seen_at", "pairing_token_hash", "pairing_expires_at", "last_critical_alert_count",
+                "last_critical_alert_at", "updated_at",
+            ])
+        request.session.pop(_admin_pairing_session_key(request.user), None)
+        return JsonResponse({"ok": True, "device_label": pairing.device_label})
+    return render(request, "dashboard/pair_device.html", {
+        "pairing_invalid": False,
+        "pairing_token": token,
+        "webpush_public_key": settings.WEBPUSH_VAPID_PUBLIC_KEY,
+        "pairing_owner": request.user.get_full_name() or request.user.get_username(),
+    })
 
 
 def _upsert_public_alert_subscription(request, payload, areas, save_direct_areas=True, direct_areas=None):
@@ -554,6 +699,7 @@ def public_alert_remove_area(request: HttpRequest) -> JsonResponse:
 def subscriber_alerts(request: HttpRequest) -> HttpResponse:
     return render(request, "incidents/subscriber_alerts.html", {
         "districts": LocationArea.objects.filter(active=True),
+        "district_map_geojson": boundary_features(),
         "webpush_public_key": settings.WEBPUSH_VAPID_PUBLIC_KEY,
     })
 
@@ -748,6 +894,149 @@ def travel_location_area(request: HttpRequest) -> JsonResponse:
     })
 
 
+def travel_reverse_location(request: HttpRequest) -> JsonResponse:
+    if request.method != "POST":
+        return JsonResponse({"error": "Use POST to identify the selected village or landmark."}, status=405)
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+        latitude = float(payload.get("latitude"))
+        longitude = float(payload.get("longitude"))
+    except (TypeError, ValueError, UnicodeDecodeError, json.JSONDecodeError):
+        return JsonResponse({"error": "The selected map coordinates are invalid."}, status=400)
+    if not math.isfinite(latitude) or not math.isfinite(longitude) or not -90 <= latitude <= 90 or not -180 <= longitude <= 180:
+        return JsonResponse({"error": "The selected map coordinates are outside a valid range."}, status=400)
+
+    query = urlencode({
+        "format": "jsonv2",
+        "lat": latitude,
+        "lon": longitude,
+        "zoom": 18,
+        "addressdetails": 1,
+        "accept-language": "en",
+    })
+    request_url = UrlRequest(
+        f"https://nominatim.openstreetmap.org/reverse?{query}",
+        headers={"User-Agent": "RapidResponseEmergency/1.0 (interactive travel map)"},
+    )
+    try:
+        with urlopen(request_url, timeout=8) as response:
+            result = json.loads(response.read().decode("utf-8"))
+    except (HTTPError, URLError, TimeoutError, OSError, ValueError) as error:
+        logger.warning("Travel reverse-geocoding lookup failed: %s", error)
+        return JsonResponse({"error": "The village name could not be loaded. You can still confirm this map point."}, status=502)
+
+    address = result.get("address") or {}
+    place_name = next(
+        (
+            address.get(key)
+            for key in ("village", "town", "city", "municipality", "suburb", "neighbourhood", "hamlet", "locality")
+            if address.get(key)
+        ),
+        "Selected map point",
+    )
+    boundary_name = boundary_name_for_point(latitude, longitude)
+    available_names = list(LocationArea.objects.filter(active=True).values_list("name", flat=True))
+    area_name = area_name_for_boundary(boundary_name, available_names)
+    area = LocationArea.objects.filter(name=area_name, active=True).first() if area_name else None
+    return JsonResponse({
+        "ok": True,
+        "place": place_name,
+        "display_name": result.get("display_name") or place_name,
+        "area": {"id": area.pk, "name": area.name} if area else None,
+        "latitude": latitude,
+        "longitude": longitude,
+    })
+
+
+def travel_place_search(request: HttpRequest) -> JsonResponse:
+    """Search public map listings near the traveller's route."""
+    if request.method != "GET":
+        return JsonResponse({"error": "Use GET to search nearby route places."}, status=405)
+
+    query = " ".join((request.GET.get("q") or "").split())
+    if len(query) < 2:
+        return JsonResponse({"ok": True, "results": []})
+    if len(query) > 80:
+        return JsonResponse({"error": "Search text is too long."}, status=400)
+
+    latitude = request.GET.get("lat")
+    longitude = request.GET.get("lon")
+    point = None
+    if latitude not in (None, "") or longitude not in (None, ""):
+        try:
+            latitude = float(latitude)
+            longitude = float(longitude)
+        except (TypeError, ValueError):
+            return JsonResponse({"error": "The nearby search coordinates are invalid."}, status=400)
+        if not math.isfinite(latitude) or not math.isfinite(longitude) or not -90 <= latitude <= 90 or not -180 <= longitude <= 180:
+            return JsonResponse({"error": "The nearby search coordinates are outside a valid range."}, status=400)
+        point = (latitude, longitude)
+
+    cache_source = json.dumps({"query": query.casefold(), "point": point}, sort_keys=True)
+    cache_key = f"travel-place-search:{hashlib.sha256(cache_source.encode()).hexdigest()}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return JsonResponse(cached)
+
+    search_params = {
+        "format": "jsonv2",
+        "q": f"{query}, Uganda",
+        "limit": 8,
+        "countrycodes": "ug",
+        "addressdetails": 1,
+        "dedupe": 1,
+        "accept-language": "en",
+    }
+    if point:
+        search_params.update({"lat": point[0], "lon": point[1], "zoom": 14})
+    search_query = urlencode(search_params)
+    request_url = UrlRequest(
+        f"https://nominatim.openstreetmap.org/search?{search_query}",
+        headers={"User-Agent": "RapidResponseEmergency/1.0 (interactive travel map)"},
+    )
+    try:
+        with urlopen(request_url, timeout=8) as response:
+            raw_results = json.loads(response.read().decode("utf-8"))
+    except (HTTPError, URLError, TimeoutError, OSError, ValueError) as error:
+        logger.warning("Travel place search failed: %s", error)
+        return JsonResponse({"error": "Nearby map places could not be loaded right now."}, status=502)
+
+    available_names = list(LocationArea.objects.filter(active=True).values_list("name", flat=True))
+    results = []
+    for item in raw_results if isinstance(raw_results, list) else []:
+        try:
+            result_latitude = float(item.get("lat"))
+            result_longitude = float(item.get("lon"))
+        except (TypeError, ValueError):
+            continue
+        if not math.isfinite(result_latitude) or not math.isfinite(result_longitude):
+            continue
+        address = item.get("address") or {}
+        name = item.get("name") or next(
+            (
+                address.get(key)
+                for key in ("amenity", "shop", "building", "village", "town", "city", "suburb", "neighbourhood")
+                if address.get(key)
+            ),
+            "Map place",
+        )
+        boundary_name = boundary_name_for_point(result_latitude, result_longitude)
+        area_name = area_name_for_boundary(boundary_name, available_names)
+        area = LocationArea.objects.filter(name=area_name, active=True).first() if area_name else None
+        results.append({
+            "name": str(name),
+            "display_name": str(item.get("display_name") or name),
+            "category": str(item.get("type") or item.get("class") or "place"),
+            "latitude": result_latitude,
+            "longitude": result_longitude,
+            "area": {"id": area.pk, "name": area.name} if area else None,
+        })
+
+    payload = {"ok": True, "results": results}
+    cache.set(cache_key, payload, 60)
+    return JsonResponse(payload)
+
+
 def travel_alert_plan(request: HttpRequest) -> JsonResponse:
     if request.method != "POST":
         return JsonResponse({"error": "Use POST to start a travel safety watch."}, status=405)
@@ -779,13 +1068,41 @@ def travel_alert_plan(request: HttpRequest) -> JsonResponse:
     }
     origin_point = _geometry_center((route_features_by_name.get(origin.name) or {}).get("geometry"))
     destination_point = _geometry_center((route_features_by_name.get(destination.name) or {}).get("geometry"))
-    try:
-        gps_latitude = float(payload.get("start_latitude"))
-        gps_longitude = float(payload.get("start_longitude"))
-        if math.isfinite(gps_latitude) and math.isfinite(gps_longitude):
-            origin_point = (gps_latitude, gps_longitude)
-    except (TypeError, ValueError):
-        pass
+    start_latitude = payload.get("start_latitude")
+    start_longitude = payload.get("start_longitude")
+    if start_latitude not in (None, "") or start_longitude not in (None, ""):
+        try:
+            gps_latitude = float(start_latitude)
+            gps_longitude = float(start_longitude)
+        except (TypeError, ValueError):
+            return JsonResponse({"error": "The selected starting coordinates are invalid."}, status=400)
+        if not (
+            math.isfinite(gps_latitude)
+            and math.isfinite(gps_longitude)
+            and -90 <= gps_latitude <= 90
+            and -180 <= gps_longitude <= 180
+        ):
+            return JsonResponse({"error": "The selected starting coordinates are outside a valid range."}, status=400)
+        origin_point = (gps_latitude, gps_longitude)
+    destination_latitude = payload.get("destination_latitude")
+    destination_longitude = payload.get("destination_longitude")
+    destination_point_override = None
+    if destination_latitude not in (None, "") or destination_longitude not in (None, ""):
+        try:
+            destination_latitude = float(destination_latitude)
+            destination_longitude = float(destination_longitude)
+        except (TypeError, ValueError):
+            return JsonResponse({"error": "The selected destination coordinates are invalid."}, status=400)
+        if not (
+            math.isfinite(destination_latitude)
+            and math.isfinite(destination_longitude)
+            and -90 <= destination_latitude <= 90
+            and -180 <= destination_longitude <= 180
+        ):
+            return JsonResponse({"error": "The selected destination coordinates are outside a valid range."}, status=400)
+        destination_point_override = (destination_latitude, destination_longitude)
+    if destination_point_override:
+        destination_point = destination_point_override
     google_traffic = _google_traffic_route(origin_point, destination_point)
     direct_area_values = payload.get("area_ids") or []
     try:
@@ -831,6 +1148,8 @@ def travel_alert_plan(request: HttpRequest) -> JsonResponse:
         "plan_id": plan.pk if subscription is not None else None,
         "origin": origin.name,
         "destination": destination.name,
+        "destination_place": str(payload.get("destination_place") or "").strip(),
+        "destination_point": list(destination_point) if destination_point else None,
         "route": [area.name for area in route_areas],
         "route_map": route_map,
         "traffic_provider": "Google" if getattr(settings, "GOOGLE_MAPS_API_KEY", "") else "OSRM",
@@ -1240,6 +1559,8 @@ def emergency_chat_page(request: HttpRequest, incident_id: int) -> HttpResponse:
             "error": "You are not authorised to access this emergency chat.",
             "incident": incident,
         }, status=403)
+    if sender_type == "admin":
+        return redirect(f"{reverse('dashboard_emergency_chats')}?case={incident.pk}")
     room = _active_emergency_chat_room(incident)
     if room is None:
         room = _ensure_emergency_chat_room(incident)
@@ -1253,6 +1574,110 @@ def emergency_chat_page(request: HttpRequest, incident_id: int) -> HttpResponse:
         "public_chat_token": make_public_chat_token(incident) if sender_type == "public" else "",
         "back_url": reverse("submit_success") if sender_type == "public" else reverse("dashboard_incident", args=[incident.pk]),
     })
+
+
+@login_required
+def dashboard_emergency_chats(request: HttpRequest) -> HttpResponse:
+    """Render the responder's multi-case emergency chat workspace."""
+    if not _can_access_dashboard(request.user):
+        return _dashboard_inactive_redirect(request)
+
+    if request.session.get("operations_center_access") or request.user.is_superuser:
+        visible_incidents = Incident.objects.select_related(
+            "request", "assigned_area", "assigned_admin"
+        )
+    else:
+        visible_incidents = _visible_incidents(request.user)
+
+    now = timezone.now()
+    chat_rooms = list(
+        EmergencyChatRoom.objects.filter(
+            incident__in=visible_incidents,
+            expires_at__gt=now,
+            accepted_at__isnull=False,
+        )
+        .select_related("incident__request", "incident__assigned_area")
+        .annotate(
+            unread_public=Count(
+                "messages",
+                filter=Q(messages__sender_type="public", messages__read_at__isnull=True),
+            )
+        )
+        .order_by("-updated_at", "-pk")
+    )
+
+    selected_room = None
+    selected_case = request.GET.get("case", "").strip()
+    if selected_case.isdigit():
+        selected_room = next(
+            (room for room in chat_rooms if room.incident_id == int(selected_case)),
+            None,
+        )
+    if selected_room is None and chat_rooms:
+        selected_room = chat_rooms[0]
+
+    if selected_room:
+        selected_room.messages.filter(
+            sender_type="public",
+            read_at__isnull=True,
+        ).update(read_at=now)
+        selected_room.unread_public = 0
+
+    return render(request, "dashboard/emergency_chats.html", {
+        "chat_rooms": chat_rooms,
+        "selected_room": selected_room,
+        "incident": selected_room.incident if selected_room else None,
+        "chat_room": selected_room,
+        "chat_role": "admin",
+        "websocket_token": (
+            websocket_access_token(request, "emergency", [selected_room.incident_id], "admin")
+            if selected_room else ""
+        ),
+        "back_url": reverse("dashboard_incoming"),
+    })
+
+
+@login_required
+def dashboard_delete_emergency_chat(request: HttpRequest, incident_id: int) -> HttpResponse:
+    """Delete one chat room and its media without deleting the emergency case."""
+    if not _can_access_dashboard(request.user):
+        return _dashboard_inactive_redirect(request)
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+
+    incident = get_object_or_404(
+        Incident.objects.select_related("request", "assigned_area", "assigned_admin"),
+        pk=incident_id,
+    )
+    allowed, sender_type = _can_access_emergency_chat(request, incident)
+    if not allowed or sender_type != "admin":
+        record_security_event(
+            request,
+            "access_denied",
+            user=request.user,
+            details={"surface": "dashboard_delete_emergency_chat", "incident_id": incident_id},
+        )
+        return HttpResponseForbidden("You are not authorised to delete this emergency chat.")
+
+    room = EmergencyChatRoom.objects.filter(incident=incident).first()
+    if room is None:
+        messages.info(request, f"No chat history was found for {incident.request.request_id}.")
+        return redirect("dashboard_emergency_chats")
+
+    media_files = list(room.messages.exclude(audio="").values_list("audio", flat=True))
+    media_files.extend(room.messages.exclude(attachment="").values_list("attachment", flat=True))
+    request_id = incident.request.request_id
+    with transaction.atomic():
+        room.delete()
+        record_security_event(
+            request,
+            "emergency_chat_deleted",
+            user=request.user,
+            details={"incident_id": incident.pk, "request_id": request_id},
+        )
+    _delete_incident_files(media_files)
+    messages.success(request, f"Chat history for {request_id} was deleted. The case remains available.")
+    return redirect("dashboard_emergency_chats")
 
 
 def emergency_chat(request: HttpRequest, incident_id: int) -> HttpResponse:
@@ -1534,6 +1959,9 @@ def _resolve_area_from_coordinates(latitude, longitude, fallback_area=None):
 def dashboard_login(request: HttpRequest) -> HttpResponse:
     if request.user.is_authenticated and _can_access_dashboard(request.user):
         return redirect("dashboard_home")
+    next_path = request.POST.get("next") or request.GET.get("next") or ""
+    if not next_path.startswith("/dashboard/") or next_path.startswith("//"):
+        next_path = ""
     reason = request.GET.get("reason")
     error = None
     if reason == "inactive":
@@ -1546,7 +1974,7 @@ def dashboard_login(request: HttpRequest) -> HttpResponse:
         if _rate_limited(request, f"dashboard-login:{username.casefold()}", limit=10, window=300):
             record_security_event(request, "login_throttled", details={"surface": "dashboard"})
             error = "Too many sign-in attempts. Please wait five minutes and try again."
-            return render(request, "dashboard/login.html", {"error": error}, status=429)
+            return render(request, "dashboard/login.html", {"error": error, "next_path": next_path}, status=429)
         district_id = request.POST.get("district", "")
         hospital_id = request.POST.get("hospital", "")
         hospital_profile = InstitutionProfile.objects.filter(
@@ -1560,13 +1988,13 @@ def dashboard_login(request: HttpRequest) -> HttpResponse:
         user = authenticate(request, username=login_username, password=password)
         if user is not None and _can_access_dashboard(user):
             if _mfa_required_for(user):
-                return _mfa_begin(request, user, "dashboard")
+                return _mfa_begin(request, user, "dashboard", return_path=next_path or None)
             login(request, user)
             record_security_event(request, "login_success", user=user, details={"surface": "dashboard"})
-            return redirect("dashboard_home")
+            return redirect(next_path or "dashboard_home")
         record_security_event(request, "login_failure", details={"surface": "dashboard"})
         error = "The username or password is incorrect, or your account is inactive or has not been approved for the responder dashboard."
-    return render(request, "dashboard/login.html", {"error": error})
+    return render(request, "dashboard/login.html", {"error": error, "next_path": next_path})
 
 
 @login_required
@@ -1642,6 +2070,68 @@ def _visible_incidents(user):
     ).distinct().order_by("-request__created_at", "-pk")
 
 
+def _dashboard_emergency_chat_alerts(user):
+    now = timezone.now()
+    visible_incidents = _visible_incidents(user)
+    active_rooms = EmergencyChatRoom.objects.filter(
+        incident__in=visible_incidents,
+        expires_at__gt=now,
+    ).select_related("incident__request", "incident__assigned_area")
+    pending_rooms = active_rooms.filter(
+        accepted_at__isnull=False,
+        admin_notified_at__isnull=True,
+    )
+    pending_count = pending_rooms.count()
+    latest_pending = pending_rooms.order_by("-accepted_at", "-pk").first()
+    if pending_count:
+        pending_rooms.update(admin_notified_at=now)
+
+    unread_messages = EmergencyChatMessage.objects.filter(
+        room__in=active_rooms,
+        sender_type="public",
+        read_at__isnull=True,
+    ).select_related("room__incident__request", "room__incident__assigned_area")
+    unread_count = unread_messages.count()
+    latest_message = unread_messages.order_by("-created_at", "-pk").first()
+    latest_chat = latest_pending or (latest_message.room if latest_message else None)
+    return {
+        "pending": pending_count,
+        "unread": unread_count,
+        "latest_id": (
+            f"room:{latest_pending.pk}:{latest_pending.accepted_at.isoformat()}"
+            if latest_pending else ""
+        ),
+        "latest_message_id": (
+            f"message:{latest_message.pk}"
+            if latest_message else ""
+        ),
+        "latest_reference": latest_chat.incident.request.request_id if latest_chat else "",
+        "latest_message_reference": (
+            latest_message.room.incident.request.request_id
+            if latest_message else ""
+        ),
+        "latest_incident_id": latest_chat.incident_id if latest_chat else None,
+        "latest_message_incident_id": latest_message.room.incident_id if latest_message else None,
+        "latest_priority": latest_chat.incident.request.priority if latest_chat else "",
+        "latest_area": (
+            latest_chat.incident.assigned_area.name
+            if latest_chat and latest_chat.incident.assigned_area else "Location not tagged"
+        ),
+        "latest_emergency_type": (
+            latest_chat.incident.request.get_emergency_type_display()
+            if latest_chat else "Emergency case"
+        ),
+        "latest_href": (
+            f"{reverse('dashboard_emergency_chats')}?case={latest_chat.incident_id}"
+            if latest_chat else ""
+        ),
+        "latest_message_href": (
+            f"{reverse('dashboard_emergency_chats')}?case={latest_message.room.incident_id}"
+            if latest_message else ""
+        ),
+    }
+
+
 def dashboard_activity_ping(request: HttpRequest) -> JsonResponse:
     """Return small dashboard counters without re-rendering the current page."""
     if not request.user.is_authenticated or not _can_access_dashboard(request.user):
@@ -1677,6 +2167,12 @@ def dashboard_activity_ping(request: HttpRequest) -> JsonResponse:
         key=lambda item: (item.created_at, item.pk),
         default=None,
     )
+    chat_alerts = _dashboard_emergency_chat_alerts(request.user)
+    try:
+        critical_backlog = _maybe_send_admin_critical_backlog_alert(request.user, request)
+    except Exception:
+        logger.exception("The dashboard critical backlog check failed for %s", request.user.get_username())
+        critical_backlog = 0
 
     return JsonResponse({
         "server_time": timezone.now().isoformat(),
@@ -1703,6 +2199,8 @@ def dashboard_activity_ping(request: HttpRequest) -> JsonResponse:
             ),
             "latest_id": f"{latest_message.__class__.__name__}:{latest_message.pk}" if latest_message else "",
         },
+        "chats": chat_alerts,
+        "critical_backlog": critical_backlog,
     })
 
 
@@ -2374,17 +2872,17 @@ def _public_alert_metrics(user):
     return metrics
 
 
-def _send_public_area_alert(alert, request):
+def _webpush_vapid_credentials():
     vapid_private_key = settings.WEBPUSH_VAPID_PRIVATE_KEY
     vapid_subject = settings.WEBPUSH_VAPID_SUBJECT
     if not vapid_private_key or not settings.WEBPUSH_VAPID_PUBLIC_KEY or not vapid_subject:
-        return "not_configured", 0, 0, "Web Push is not configured yet. The alert is saved for the audit log."
+        return None, "Web Push is not configured yet."
     try:
         from pywebpush import webpush
         from py_vapid import Vapid
     except ImportError:
-        logger.error("pywebpush is not installed; public area alerts cannot be delivered.")
-        return "not_configured", 0, 0, "Install the Web Push dependency before sending public alerts."
+        logger.error("pywebpush is not installed; browser alerts cannot be delivered.")
+        return None, "Install the Web Push dependency before sending browser alerts."
 
     try:
         if os.path.isfile(vapid_private_key):
@@ -2399,11 +2897,108 @@ def _send_public_area_alert(alert, request):
         ).rstrip(b"=").decode()
     except Exception:
         logger.exception("The configured Web Push VAPID private key is invalid.")
-        return "not_configured", 0, 0, "The Web Push private key is invalid. Check the VAPID environment variables."
+        return None, "The Web Push private key is invalid. Check the VAPID environment variables."
 
     if derived_public_key != settings.WEBPUSH_VAPID_PUBLIC_KEY:
         logger.error("The configured Web Push VAPID public and private keys do not match.")
-        return "not_configured", 0, 0, "The Web Push public and private keys do not match. Replace them with one matching VAPID key pair."
+        return None, "The Web Push public and private keys do not match."
+    return (webpush, vapid, vapid_subject), ""
+
+
+def _critical_unopened_incidents(user):
+    return _visible_incidents(user).filter(
+        request__priority="critical",
+        status="new",
+        opened_at__isnull=True,
+    )
+
+
+def _maybe_send_admin_critical_backlog_alert(user, request):
+    pairing = AdminBrowserPairing.objects.filter(user=user, active=True).first()
+    if pairing is None or not pairing.critical_alert_enabled or not pairing.endpoint:
+        return 0
+    critical_count = _critical_unopened_incidents(user).count()
+    threshold = max(1, pairing.critical_alert_threshold)
+    if critical_count <= threshold:
+        if pairing.last_critical_alert_count or pairing.last_critical_alert_at:
+            pairing.last_critical_alert_count = 0
+            pairing.last_critical_alert_at = None
+            pairing.save(update_fields=["last_critical_alert_count", "last_critical_alert_at", "updated_at"])
+        return critical_count
+
+    now = timezone.now()
+    if (
+        pairing.last_critical_alert_count >= critical_count
+        and pairing.last_critical_alert_at
+        and now - pairing.last_critical_alert_at < ADMIN_CRITICAL_ALERT_COOLDOWN
+    ):
+        return critical_count
+    vapid_credentials, vapid_error = _webpush_vapid_credentials()
+    if vapid_credentials is None:
+        logger.warning("Critical backlog alert skipped for %s: %s", user.get_username(), vapid_error)
+        return critical_count
+    webpush, vapid, vapid_subject = vapid_credentials
+    expires_at = now + timedelta(hours=2)
+    payload = json.dumps({
+        "type": "ADMIN_CRITICAL_BACKLOG",
+        "title": "Critical response backlog",
+        "body": f"You have {critical_count} unopened critical case(s). Open the dashboard to review them.",
+        "severity": "critical",
+        "case_count": critical_count,
+        "threshold": threshold,
+        "created_at": now.isoformat(),
+        "expires_at": expires_at.isoformat(),
+        "url": request.build_absolute_uri(reverse("dashboard_incoming")),
+    })
+    subscription_info = {
+        "endpoint": pairing.endpoint,
+        "keys": {"p256dh": pairing.p256dh, "auth": pairing.auth},
+    }
+    pairing.last_critical_alert_count = critical_count
+    pairing.last_critical_alert_at = now
+    pairing.save(update_fields=["last_critical_alert_count", "last_critical_alert_at", "updated_at"])
+    try:
+        webpush(
+            subscription_info=subscription_info,
+            data=payload,
+            vapid_private_key=vapid,
+            vapid_claims={"sub": vapid_subject},
+            headers={"Urgency": "high"},
+            ttl=int(timedelta(hours=2).total_seconds()),
+            timeout=10,
+        )
+    except Exception as error:
+        response = getattr(error, "response", None)
+        status_code = getattr(response, "status_code", None)
+        if status_code in {404, 410}:
+            pairing.active = False
+            pairing.save(update_fields=["active", "updated_at"])
+        logger.warning(
+            "Critical backlog alert delivery failed for admin %s (HTTP %s): %s",
+            user.get_username(),
+            status_code or "connection error",
+            error,
+        )
+    return critical_count
+
+
+def _safe_send_admin_critical_backlog_alert(user_id, request):
+    try:
+        user = get_user_model().objects.get(pk=user_id, is_active=True)
+    except get_user_model().DoesNotExist:
+        return 0
+    try:
+        return _maybe_send_admin_critical_backlog_alert(user, request)
+    except Exception:
+        logger.exception("The post-submission critical backlog check failed for admin %s", user_id)
+        return 0
+
+
+def _send_public_area_alert(alert, request):
+    vapid_credentials, vapid_error = _webpush_vapid_credentials()
+    if vapid_credentials is None:
+        return "not_configured", 0, 0, f"{vapid_error} The alert is saved for the audit log."
+    webpush, vapid, vapid_subject = vapid_credentials
 
     payload = json.dumps({
         "title": alert.title,
@@ -2839,6 +3434,47 @@ def dashboard_profile(request: HttpRequest) -> HttpResponse:
     if not _can_access_dashboard(request.user):
         return _dashboard_inactive_redirect(request)
     profile = getattr(request.user, "response_profile", None)
+    if request.method == "POST" and request.POST.get("action") == "create_browser_pairing":
+        _rotate_admin_browser_pairing(request, request.user)
+        messages.success(request, "A new browser pairing QR code is ready. It expires in ten minutes.")
+        return redirect("dashboard_profile")
+    if request.method == "POST" and request.POST.get("action") == "unpair_browser":
+        pairing = AdminBrowserPairing.objects.filter(user=request.user).first()
+        if pairing:
+            pairing.pairing_token_hash = None
+            pairing.pairing_expires_at = None
+            pairing.endpoint_hash = None
+            pairing.endpoint = ""
+            pairing.p256dh = ""
+            pairing.auth = ""
+            pairing.device_label = ""
+            pairing.active = False
+            pairing.paired_at = None
+            pairing.last_seen_at = None
+            pairing.last_critical_alert_count = 0
+            pairing.last_critical_alert_at = None
+            pairing.save(update_fields=[
+                "pairing_token_hash", "pairing_expires_at", "endpoint_hash", "endpoint", "p256dh", "auth",
+                "device_label", "active", "paired_at", "last_seen_at", "last_critical_alert_count",
+                "last_critical_alert_at", "updated_at",
+            ])
+        request.session.pop(_admin_pairing_session_key(request.user), None)
+        messages.success(request, "The paired admin browser was disconnected.")
+        return redirect("dashboard_profile")
+    if request.method == "POST" and request.POST.get("action") == "update_critical_alerts":
+        pairing, _ = AdminBrowserPairing.objects.get_or_create(user=request.user)
+        try:
+            threshold = int(request.POST.get("critical_alert_threshold", "2"))
+        except (TypeError, ValueError):
+            threshold = 2
+        if threshold < 1 or threshold > 50:
+            messages.error(request, "Choose an alert threshold between 1 and 50 cases.")
+        else:
+            pairing.critical_alert_threshold = threshold
+            pairing.critical_alert_enabled = request.POST.get("critical_alert_enabled") == "on"
+            pairing.save(update_fields=["critical_alert_threshold", "critical_alert_enabled", "updated_at"])
+            messages.success(request, "Critical backlog alert settings updated.")
+        return redirect("dashboard_profile")
     if request.method == "POST" and request.POST.get("action") == "set_favorites_passcode":
         passcode = request.POST.get("favorites_passcode", "")
         confirmation = request.POST.get("favorites_passcode_confirmation", "")
@@ -2860,6 +3496,7 @@ def dashboard_profile(request: HttpRequest) -> HttpResponse:
     assigned_areas = list(assigned_areas)
     area_rows = [{"area": area, "code": area_routing_code(area)} for area in assigned_areas]
     visible_incidents = _visible_incidents(request.user)
+    pairing_context = _admin_pairing_context(request, request.user)
     return render(request, "dashboard/profile.html", {
         "profile": profile,
         "area_rows": area_rows,
@@ -2867,6 +3504,7 @@ def dashboard_profile(request: HttpRequest) -> HttpResponse:
         "favorites_passcode_configured": favorites_passcode_configured,
         "show_passcode_form": show_passcode_form,
         "mfa_profile": mfa_profile,
+        **pairing_context,
         "stats": {
             "solved": Incident.objects.filter(assigned_admin=request.user, status__in=["resolved", "closed"]).count(),
             "incoming": visible_incidents.filter(status="new", opened_at__isnull=True).count(),

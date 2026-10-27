@@ -1,6 +1,6 @@
 /*
- * Minimal Web Push worker for public district safety alerts.
- * It stores no case data and only displays the public alert payload.
+ * Minimal Web Push worker for public safety and paired administrator alerts.
+ * It stores no case data and only displays the delivered notification payload.
  */
 self.addEventListener("install", (event) => {
   event.waitUntil(self.skipWaiting());
@@ -17,16 +17,20 @@ self.addEventListener("push", (event) => {
   } catch (error) {
     payload = {title: "Rapid Response alert", body: "A new safety message is available."};
   }
-  const title = payload.title || "Rapid Response alert";
+  const isAdminBacklogAlert = payload.type === "ADMIN_CRITICAL_BACKLOG";
+  const title = payload.title || (isAdminBacklogAlert ? "Critical response backlog" : "Rapid Response alert");
   const expiresAt = Date.parse(payload.expires_at || "");
   if (Number.isFinite(expiresAt) && expiresAt <= Date.now()) return;
   const options = {
     body: payload.body || "A new safety message is available.",
-    tag: `rapid-response-area-alert-${payload.alert_id || "general"}`,
+    tag: isAdminBacklogAlert
+      ? "rapid-response-admin-critical-backlog"
+      : `rapid-response-area-alert-${payload.alert_id || "general"}`,
     renotify: true,
+    requireInteraction: isAdminBacklogAlert,
     silent: false,
     vibrate: [350, 120, 350, 120, 700],
-    actions: [{action: "open-alert", title: "View alert"}],
+    actions: [{action: "open-alert", title: isAdminBacklogAlert ? "Open cases" : "View alert"}],
     icon: "/static/Rapid%20Response%20Emergency%20Logo.png",
     badge: "/static/Rapid%20Response%20Emergency%20Logo.png",
     timestamp: Date.parse(payload.created_at || "") || Date.now(),

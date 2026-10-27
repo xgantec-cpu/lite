@@ -1,0 +1,115 @@
+{% extends "dashboard/base.html" %}
+{% load static %}
+
+{% block title %}Victim chats{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/emergency-chat.css' %}?v=20261026-victim-chat-workspace-2">
+<link rel="stylesheet" href="{% static 'css/dashboard/emergency-chats.css' %}?v=20261026-victim-chat-workspace-4">
+{% endblock %}
+
+{% block content %}
+<header class="page-heading victim-chat-heading">
+  <div>
+    <span class="eyebrow">Secure response workspace</span>
+    <h1>Victim chats</h1>
+    <p>Keep several emergency conversations open and move between them without leaving the page.</p>
+  </div>
+  <a class="victim-chat-back" href="{% url 'dashboard_incoming' %}"><span aria-hidden="true">←</span> Incoming incidents</a>
+</header>
+
+<section class="victim-chat-workspace" aria-label="Victim chat workspace">
+  <aside class="victim-chat-case-list" aria-label="Emergency case conversations">
+    <header class="victim-chat-list-header">
+      <div>
+        <span class="victim-chat-kicker">Active conversations</span>
+        <h2>Case chats</h2>
+      </div>
+      <span class="victim-chat-total">{{ chat_rooms|length }}</span>
+    </header>
+    <div class="victim-chat-list" data-victim-chat-list>
+      {% for room in chat_rooms %}
+        <a class="victim-chat-case{% if selected_room and selected_room.pk == room.pk %} is-selected{% endif %}{% if room.unread_public %} has-unread{% endif %}" data-victim-chat-case-id="{{ room.incident_id }}" href="{% url 'dashboard_emergency_chats' %}?case={{ room.incident_id }}" aria-current="{% if selected_room and selected_room.pk == room.pk %}page{% endif %}">
+          <span class="victim-chat-case-avatar" aria-hidden="true">{{ room.incident.request.request_id|slice:"-2:" }}</span>
+          <span class="victim-chat-case-copy">
+            <strong>{{ room.incident.request.request_id }}</strong>
+            <small>{{ room.incident.assigned_area.name|default:"Location not tagged" }} · {{ room.incident.request.get_emergency_type_display }}</small>
+            <em>{{ room.updated_at|date:"d M · H:i" }}</em>
+          </span>
+          {% if room.unread_public %}<b class="victim-chat-unread" aria-label="{{ room.unread_public }} unread messages">{{ room.unread_public }}</b>{% endif %}
+        </a>
+      {% empty %}
+        <div class="victim-chat-list-empty">
+          <span class="victim-chat-empty-icon" aria-hidden="true">⌁</span>
+          <strong>No active case chats</strong>
+          <p>A case appears here after the request sender opens secure chat or sends a message.</p>
+        </div>
+      {% endfor %}
+    </div>
+  </aside>
+
+  {% if incident and chat_room %}
+    <section class="victim-chat-conversation" data-emergency-chat-widget data-chat-fullscreen="true" data-chat-role="admin" data-chat-url="{% url 'emergency_chat' incident.pk %}" data-chat-ws-url="/ws/chat/incidents/{{ incident.pk }}/?token={{ websocket_token|urlencode }}" data-rtc-ice-servers="{{ rtc_ice_servers_json|escape }}">
+      <div class="victim-chat-conversation-meta">
+        <div>
+          <span class="victim-chat-kicker">Selected emergency</span>
+          <h2>{{ incident.request.request_id }}</h2>
+          <p>{{ incident.request.get_emergency_type_display }} · {{ incident.assigned_area.name|default:"Location not tagged" }}</p>
+        </div>
+        <a class="victim-chat-case-link" href="{% url 'dashboard_incident' incident.pk %}">View case <span aria-hidden="true">↗</span></a>
+      </div>
+
+      <section class="emergency-chat-panel emergency-chat-full-panel" data-chat-panel aria-label="Secure conversation for {{ incident.request.request_id }}">
+        <header class="emergency-chat-header">
+          <div>
+            <strong>Sender conversation</strong>
+            <small>Case {{ incident.request.request_id }} · Messages are retained for 48 hours</small>
+          </div>
+          <div class="victim-chat-header-actions">
+            <span class="emergency-chat-live"><i></i>Secure channel</span>
+            <form method="post" action="{% url 'dashboard_delete_emergency_chat' incident.pk %}" onsubmit="return window.confirm('Delete this chat history? The emergency case will remain available.');">
+              {% csrf_token %}
+              <button class="victim-chat-delete" type="submit" aria-label="Delete chat history for {{ incident.request.request_id }}" title="Delete chat history"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 4h4l1 3H9l1-3Zm-3 3 1 13h8l1-13M10 11v6m4-6v6"/></svg><span>Delete chat</span></button>
+            </form>
+          </div>
+        </header>
+        <div class="emergency-chat-status" data-chat-status>Opening the secure response channel…</div>
+        <div class="emergency-chat-messages" data-chat-messages></div>
+        <div class="emergency-chat-actions emergency-chat-channels" aria-label="Chat channels">
+          <button type="button" data-chat-channel="text"><span>✎</span><small>Message</small></button>
+          <button type="button" data-chat-record data-chat-channel="audio"><span>◉</span><small>Audio note</small></button>
+          <button type="button" data-chat-attach data-chat-channel="file"><span>↗</span><small>File</small></button>
+          <button type="button" data-chat-call data-chat-channel="call"><span>⌕</span><small>Voice call</small></button>
+          <input type="file" data-chat-attachment hidden accept=".pdf,.json,.zip,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.jpg,.jpeg,.png,.gif,.webp,.webm,.ogg,.mp3,.m4a,.wav,.mp4,.mov">
+          <small class="emergency-chat-file-name" data-chat-file-name></small>
+        </div>
+        <section class="emergency-call-controls" data-call-controls hidden aria-label="Voice call controls">
+          <div class="emergency-call-heading"><div><strong data-call-connection>Voice call connected</strong><span class="emergency-call-timer" data-call-timer>00:00</span><small data-call-note>Use the controls below to manage the call.</small><small class="emergency-call-mic" data-rtc-mic>Microphone not connected</small></div><button class="call-end-button" type="button" data-call-end>End call</button></div>
+          <div class="emergency-call-buttons">
+            <button type="button" data-call-hold><span>Ⅱ</span><small>Hold</small></button>
+            <button type="button" data-call-mute><span>◉</span><small>Mute</small></button>
+            <button type="button" data-call-speaker><span>⌁</span><small>Speaker</small></button>
+          </div>
+          <audio data-rtc-audio autoplay playsinline></audio>
+        </section>
+        <form class="emergency-chat-form" data-chat-form>
+          {% csrf_token %}
+          <textarea data-chat-body rows="2" maxlength="4000" placeholder="Write a message to the request sender…"></textarea>
+          <button class="button button-primary" type="submit" aria-label="Send message"><span class="send-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M21.7 2.3 3.2 10.1c-.8.3-.8 1.4 0 1.7l7.2 2.8 2.8 7.2c.3.8 1.4.8 1.7 0l7.8-18.5c.3-.7-.4-1.3-1-.9ZM12 13.2 5.8 10.8l12.1-5.1L12 13.2Zm2.1 5.8-1.7-4.3 5.9-7.1-4.2 11.4Z"/></svg></span></button>
+        </form>
+      </section>
+    </section>
+  {% else %}
+    <section class="victim-chat-no-selection" aria-live="polite">
+      <span class="victim-chat-empty-icon" aria-hidden="true">⌁</span>
+      <h2>Select a case chat</h2>
+      <p>Choose a case number on the left to open its secure conversation. New sender messages will appear in the list.</p>
+    </section>
+  {% endif %}
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/emergency-chat.js' %}?v=20261026-victim-chat-workspace-2"></script>
+<script src="{% static 'js/dashboard-emergency-chats.js' %}?v=20261026-victim-chat-workspace-2"></script>
+{% endblock %}

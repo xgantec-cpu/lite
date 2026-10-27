@@ -136,3 +136,36 @@ html[data-theme="dark"] .inhouse-file-name { color: #abc6d4; }
   .official-chat-compose [data-chat-file-name] { grid-column: 1 / -1; }
   .rtc-call-controls [data-rtc-status] { flex-basis: 100%; }
 }
+
+.official-chat-panel.is-expanded {
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  inset: 18px;
+  width: auto;
+  height: calc(100vh - 36px);
+  max-height: none;
+  border-radius: 18px;
+  box-shadow: 0 24px 80px rgba(12, 30, 52, .34);
+  z-index: 1300;
+}
+
+.official-chat-panel.is-expanded .official-chat-messages {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+}
+
+.official-chat-panel.is-expanded .rtc-call-controls,
+.official-chat-panel.is-expanded form {
+  flex-shrink: 0;
+}
+
+@media (max-width: 650px) {
+  .official-chat-panel.is-expanded {
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    border-radius: 0;
+  }
+}

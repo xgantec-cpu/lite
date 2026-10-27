@@ -33,8 +33,13 @@
 
   <aside class="global-alert-panel" aria-labelledby="area-alert-title">
     <div class="global-alert-panel-heading">
-      <span class="global-alert-kicker">Community safety channel</span>
-      <h2 id="area-alert-title">Send an area alert</h2>
+      <div class="global-alert-heading-row">
+        <span class="global-alert-symbol" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M4 11v2h3l8 5V6l-8 5H4Z" /><path d="M15 9.5a4 4 0 0 1 0 5M18 7a7 7 0 0 1 0 10" /><path d="m7 13 1.5 5H11l-1.5-5" /></svg></span>
+        <div>
+          <span class="global-alert-kicker">Community safety channel</span>
+          <h2 id="area-alert-title">Send an area alert</h2>
+        </div>
+      </div>
       <p>Share a calm, public-safe message with a district or publish an official notice across Uganda.</p>
       {% if not webpush_configured %}<div class="global-alert-config-warning">Delivery is not active yet. Add the Web Push environment keys before sending.</div>{% endif %}
     </div>

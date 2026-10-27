@@ -627,7 +627,7 @@
     showStatus(speakerEnabled ? "Speaker mode enabled for this device." : "Speaker mode disabled.");
   });
 
-  refresh(role === "public");
+  refresh(role === "public" || fullscreen);
   connectWebSocket();
   pollTimer = window.setInterval(function () {
     if (!socket || socket.readyState !== WebSocket.OPEN) refresh(isOpen);

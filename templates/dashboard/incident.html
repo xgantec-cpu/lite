@@ -107,6 +107,6 @@
 <script src="{% static 'js/rtc-chat.js' %}?v=20261022-portal-audio"></script>
 {% endif %}
 {% if emergency_chat_room and emergency_chat_allowed %}
-<a class="emergency-chat-dashboard-link" href="{% url 'emergency_chat_page' incident.pk %}"><span class="emergency-chat-invite-icon">◌</span><span><strong>Open sender chat</strong><small>Use the full-screen secure conversation for {{ incident.request.request_id }}.</small></span><b>Open chat →</b></a>
+<a class="emergency-chat-dashboard-link" href="{% url 'dashboard_emergency_chats' %}?case={{ incident.pk }}"><span class="emergency-chat-invite-icon">◌</span><span><strong>Open sender chat</strong><small>Use the full-screen secure conversation for {{ incident.request.request_id }}.</small></span><b>Open chat →</b></a>
 {% endif %}
 {% endblock %}

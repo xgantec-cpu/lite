@@ -641,6 +641,77 @@ class ResponderDashboardTests(TestCase):
         self.assertContains(response, self.incident.request.request_id)
         self.assertNotContains(response, self.other_incident.request.request_id)
 
+    def test_victim_chat_workspace_lists_and_selects_assigned_case_chats(self):
+        room = EmergencyChatRoom.objects.create(
+            incident=self.incident,
+            accepted_at=timezone.now(),
+            expires_at=timezone.now() + timedelta(hours=48),
+        )
+        message = EmergencyChatMessage.objects.create(
+            room=room,
+            sender_type="public",
+            channel="text",
+            body="Please help me.",
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            reverse("dashboard_emergency_chats"),
+            {"case": self.incident.pk},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Victim chats")
+        self.assertContains(response, self.incident.request.request_id)
+        self.assertNotContains(response, self.other_incident.request.request_id)
+        message.refresh_from_db()
+        self.assertIsNotNone(message.read_at)
+
+        redirected = self.client.get(reverse("emergency_chat_page", args=[self.incident.pk]))
+        self.assertRedirects(
+            redirected,
+            f"{reverse('dashboard_emergency_chats')}?case={self.incident.pk}",
+        )
+
+    def test_untriggered_case_chat_is_not_listed_until_sender_opens_chat(self):
+        EmergencyChatRoom.objects.create(
+            incident=self.incident,
+            expires_at=timezone.now() + timedelta(hours=48),
+        )
+        self.client.force_login(self.user)
+
+        waiting = self.client.get(reverse("dashboard_emergency_chats"))
+        self.assertNotContains(waiting, self.incident.request.request_id)
+
+        room = EmergencyChatRoom.objects.get(incident=self.incident)
+        room.accepted_at = timezone.now()
+        room.save(update_fields=["accepted_at", "updated_at"])
+        active = self.client.get(reverse("dashboard_emergency_chats"))
+        self.assertContains(active, self.incident.request.request_id)
+
+    def test_admin_can_delete_chat_history_without_deleting_the_case(self):
+        room = EmergencyChatRoom.objects.create(
+            incident=self.incident,
+            accepted_at=timezone.now(),
+            expires_at=timezone.now() + timedelta(hours=48),
+        )
+        EmergencyChatMessage.objects.create(
+            room=room,
+            sender_type="public",
+            channel="text",
+            body="Remove this conversation only.",
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse("dashboard_delete_emergency_chat", args=[self.incident.pk]),
+        )
+
+        self.assertRedirects(response, reverse("dashboard_emergency_chats"))
+        self.assertTrue(Incident.objects.filter(pk=self.incident.pk).exists())
+        self.assertFalse(EmergencyChatRoom.objects.filter(pk=room.pk).exists())
+        self.assertTrue(SecurityEvent.objects.filter(event_type="emergency_chat_deleted", user=self.user).exists())
+
     def test_failed_dashboard_login_is_recorded_without_storing_password(self):
         response = self.client.post(reverse("dashboard_login"), {"username": "masaka-admin", "password": "wrong-password"})
         self.assertEqual(response.status_code, 200)
@@ -1452,6 +1523,28 @@ class ResponderDashboardTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertFalse(TravelSafetyPlan.objects.get(subscription=travel_only).active)
+
+    def test_travel_place_search_returns_listed_map_places(self):
+        nominatim_response = [{
+            "name": "Masaka Coffee House",
+            "display_name": "Masaka Coffee House, Masaka, Uganda",
+            "type": "cafe",
+            "lat": "-0.3400",
+            "lon": "31.7333",
+            "address": {"amenity": "cafe", "town": "Masaka"},
+        }]
+        with patch("incidents.views.urlopen") as mocked_urlopen:
+            response = mocked_urlopen.return_value.__enter__.return_value
+            response.read.return_value = json.dumps(nominatim_response).encode("utf-8")
+            result = self.client.get(
+                reverse("travel_place_search"),
+                {"q": "cafe route test", "lat": "-0.3400", "lon": "31.7333"},
+            )
+
+        self.assertEqual(result.status_code, 200)
+        self.assertEqual(result.json()["results"][0]["name"], "Masaka Coffee House")
+        self.assertEqual(result.json()["results"][0]["category"], "cafe")
+        mocked_urlopen.assert_called_once()
 
     @override_settings(GOOGLE_MAPS_API_KEY="test-google-server-key")
     def test_travel_watch_uses_google_traffic_when_configured(self):

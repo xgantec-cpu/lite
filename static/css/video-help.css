@@ -743,9 +743,54 @@
 }
 
 .quick-camera-switch {
-  top: max(16px, env(safe-area-inset-top));
-  right: 16px;
-  transform: translateY(46px);
+  top: 50%;
+  right: 0;
+  display: flex;
+  width: 68px;
+  min-height: 76px;
+  transform: translateY(-50%);
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 10px 6px;
+  border-radius: 18px 0 0 18px;
+  background: rgba(53, 183, 232, .94);
+}
+
+.quick-camera-switch-icon {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+}
+
+.quick-camera-switch-icon svg {
+  width: 27px;
+  height: 27px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.quick-camera-switch small {
+  color: #fff;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .06em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.quick-camera-switch:hover,
+.quick-camera-switch:focus-visible {
+  transform: translateY(-50%);
+}
+
+.quick-camera-switch:disabled {
+  transform: translateY(-50%);
 }
 
 .quick-send-bar {

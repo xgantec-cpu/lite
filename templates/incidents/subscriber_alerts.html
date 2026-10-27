@@ -4,8 +4,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="origin">
   <title>Safety Alerts and Travel Watch</title>
-  <link rel="stylesheet" href="{% static 'css/site.css' %}?v=20261025-notice-ui">
+  <link rel="stylesheet" href="{% static 'css/site.css' %}?v=20261026-route-place-search">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
 </head>
 <body class="page-subscriber-alerts">
@@ -17,6 +18,8 @@
         data-remove-area-url="{% url 'public_alert_remove_area' %}"
         data-travel-url="{% url 'travel_alert_plan' %}"
         data-travel-location-url="{% url 'travel_location_area' %}"
+        data-travel-place-search-url="{% url 'travel_place_search' %}"
+        data-travel-reverse-location-url="{% url 'travel_reverse_location' %}"
         data-travel-stop-url="{% url 'travel_alert_stop' %}">
     <a class="subscriber-back-link" href="{% url 'home' %}"><span aria-hidden="true">←</span> Back to emergency assistance</a>
     <section class="subscriber-hero">
@@ -46,7 +49,9 @@
             </div>
           </div>
           <div class="travel-actions">
-            <button class="subscriber-gps-button" type="button" data-use-gps>Use GPS for live trip view</button>
+            <button class="subscriber-gps-button" type="button" data-use-gps data-state="standby" aria-controls="travel-live-position" aria-busy="false">Use GPS for live trip view</button>
+            <span class="travel-gps-indicator" data-gps-indicator>GPS standby</span>
+            <div class="travel-gps-status" data-gps-status role="status" aria-live="polite">GPS is off. Tap the button to activate live trip view.</div>
             <div class="travel-live-position" data-live-position hidden role="status" aria-live="polite"></div>
           </div>
           <p class="subscriber-help">Tap Use GPS to identify your starting district. When it is found, choose where you are travelling to and calculate the route distance.</p>
@@ -54,6 +59,7 @@
             {% csrf_token %}
             <label><span>From</span><select name="origin_area" aria-label="Starting district" required><option value="">Choose starting district</option>{% for district in districts %}<option value="{{ district.pk }}">{{ district.name }}</option>{% endfor %}</select></label>
             <label><span>To — where are you travelling?</span><select name="destination_area" aria-label="Destination district" required><option value="">Choose destination district</option>{% for district in districts %}<option value="{{ district.pk }}">{{ district.name }}</option>{% endfor %}</select></label>
+            <label><span>Village or landmark in destination</span><input name="destination_place" data-destination-place type="text" placeholder="Select a district, then pin a village on the map" readonly></label>
             <button class="subscriber-primary-button" type="submit">Calculate route &amp; distance</button>
           </form>
           <div class="travel-route-result" data-travel-route hidden></div>
@@ -69,7 +75,26 @@
               </div>
               <div class="travel-map-heading-actions">
                 <span class="travel-map-state" data-map-route-state>Waiting for a route</span>
+                <button class="travel-map-pin-button" type="button" data-map-pin-mode aria-pressed="false">Pin start on map</button>
+                <button class="travel-map-destination-button" type="button" data-map-destination-mode aria-pressed="false" disabled>Pin destination village</button>
+                <button class="travel-map-theme-toggle" type="button" data-map-theme-toggle aria-pressed="false">Night map</button>
                 <button class="travel-map-fullscreen" type="button" data-map-fullscreen aria-pressed="false">Full map</button>
+              </div>
+            </div>
+            <div class="travel-map-search" data-map-search-panel>
+              <label for="travel-map-place-search"><span>Search nearby route places</span><input id="travel-map-place-search" type="search" data-map-place-search placeholder="Coffee shop, cafe, fuel, hospital…" autocomplete="off"></label>
+              <div class="travel-map-search-results" data-map-place-results role="listbox" hidden></div>
+            </div>
+            <div class="travel-map-pin-tools" data-map-pin-tools>
+              <span data-map-pin-status>Choose “Pin start on map”, then tap your starting point.</span>
+            </div>
+            <div class="travel-map-pin-confirm" data-map-pin-confirm-panel hidden role="dialog" aria-labelledby="travel-map-pin-confirm-title">
+              <strong id="travel-map-pin-confirm-title" data-map-pin-confirm-title>Confirm this starting point</strong>
+              <p data-map-pin-confirm-text></p>
+              <div>
+                <button class="travel-map-confirm-button" type="button" data-map-pin-confirm>Use tapped point</button>
+                <button class="travel-map-gps-button" type="button" data-map-pin-use-gps hidden>Use GPS point</button>
+                <button class="travel-map-cancel-button" type="button" data-map-pin-cancel>Cancel</button>
               </div>
             </div>
             <div class="travel-map-route-labels" data-map-route-labels hidden>
@@ -135,7 +160,8 @@
     </section>
     </div>
   </main>
+  {{ district_map_geojson|json_script:"travel-district-boundaries" }}
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
-  <script src="{% static 'js/subscriber-alerts.js' %}?v=20261022-travel-map-v8"></script>
+<script src="{% static 'js/subscriber-alerts.js' %}?v=20261026-route-place-search"></script>
 </body>
 </html>

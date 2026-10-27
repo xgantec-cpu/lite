@@ -82,6 +82,34 @@ class ResponseProfile(models.Model):
         return f"{self.user.get_username()} ({self.get_role_display()})"
 
 
+class AdminBrowserPairing(models.Model):
+    user = models.OneToOneField(
+        get_user_model(),
+        on_delete=models.CASCADE,
+        related_name="admin_browser_pairing",
+    )
+    pairing_token_hash = models.CharField(max_length=64, blank=True, null=True, unique=True, editable=False)
+    pairing_expires_at = models.DateTimeField(null=True, blank=True, editable=False)
+    endpoint_hash = models.CharField(max_length=64, blank=True, null=True, unique=True, editable=False)
+    endpoint = EncryptedTextField(max_length=2048, blank=True, editable=False)
+    p256dh = EncryptedTextField(max_length=255, blank=True, editable=False)
+    auth = EncryptedTextField(max_length=255, blank=True, editable=False)
+    device_label = models.CharField(max_length=120, blank=True)
+    active = models.BooleanField(default=False)
+    paired_at = models.DateTimeField(null=True, blank=True, editable=False)
+    last_seen_at = models.DateTimeField(null=True, blank=True, editable=False)
+    critical_alert_enabled = models.BooleanField(default=True)
+    critical_alert_threshold = models.PositiveSmallIntegerField(default=2)
+    last_critical_alert_count = models.PositiveIntegerField(default=0, editable=False)
+    last_critical_alert_at = models.DateTimeField(null=True, blank=True, editable=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        state = "paired" if self.active else "not paired"
+        return f"{self.user.get_username()} browser ({state})"
+
+
 class InHouseConversation(models.Model):
     user_one = models.ForeignKey(get_user_model(), on_delete=models.CASCADE, related_name="inhouse_conversations_as_one")
     user_two = models.ForeignKey(get_user_model(), on_delete=models.CASCADE, related_name="inhouse_conversations_as_two")
@@ -299,6 +327,7 @@ class Incident(models.Model):
 class EmergencyChatRoom(models.Model):
     incident = models.OneToOneField(Incident, on_delete=models.CASCADE, related_name="emergency_chat_room")
     accepted_at = models.DateTimeField(null=True, blank=True)
+    admin_notified_at = models.DateTimeField(null=True, blank=True)
     expires_at = models.DateTimeField()
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

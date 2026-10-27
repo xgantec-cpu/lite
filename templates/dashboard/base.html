@@ -15,35 +15,45 @@
     } catch (error) {}
   </script>
   <title>{% block title %}Responder dashboard{% endblock %} · Rapid Response</title>
-  <link rel="stylesheet" href="{% static 'css/dashboard/dashboard.css' %}?v=20261025-admin-guide">
-  <link rel="stylesheet" href="{% static 'css/dashboard/map.css' %}?v=20261023-national-alerts">
+  <link rel="stylesheet" href="{% static 'css/dashboard/dashboard.css' %}?v=20261026-default-buttons">
+  <link rel="stylesheet" href="{% static 'css/dashboard/map.css' %}?v=20261026-alert-symbol">
   <link rel="stylesheet" href="{% static 'css/dashboard/referrals.css' %}?v=20261023-referral-history">
-  <link rel="stylesheet" href="{% static 'css/dashboard/uichat-theme.css' %}?v=20261021-icon-panels">
-  <link rel="stylesheet" href="{% static 'css/chat-rtc.css' %}?v=20261022-portal-audio">
+  <link rel="stylesheet" href="{% static 'css/dashboard/uichat-theme.css' %}?v=20261026-more-menu">
+  <link rel="stylesheet" href="{% static 'css/chat-rtc.css' %}?v=20261026-full-chat">
   <link rel="stylesheet" href="{% static 'css/dashboard/report-builder.css' %}?v=20261023-report-footer">
   {% block extra_css %}{% endblock %}
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
-  <link rel="stylesheet" href="{% static 'css/dashboard/dark-mode.css' %}?v=20261025-admin-guide">
+  <link rel="stylesheet" href="{% static 'css/dashboard/dark-mode.css' %}?v=20261026-professional-dark-mode-tabs">
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 </head>
-<body class="page-operations" data-session-lock-url="{% url 'dashboard_logout' %}" data-session-keepalive-url="{% url 'workspace_keepalive' %}" data-dashboard-login-url="{% url 'dashboard_login' %}" data-dashboard-pulse-url="{% url 'dashboard_activity_ping' %}" data-dashboard-incoming-url="{% url 'dashboard_incoming' %}" data-dashboard-referrals-url="{% url 'dashboard_referral_inbox' %}" data-dashboard-chat-url="{% url 'inhouse_chat' %}">
+<body class="page-operations" data-dashboard-page="{{ request.resolver_match.url_name|default:'dashboard' }}" data-session-lock-url="{% url 'dashboard_logout' %}" data-session-keepalive-url="{% url 'workspace_keepalive' %}" data-dashboard-login-url="{% url 'dashboard_login' %}" data-dashboard-pulse-url="{% url 'dashboard_activity_ping' %}" data-dashboard-incoming-url="{% url 'dashboard_incoming' %}" data-dashboard-referrals-url="{% url 'dashboard_referral_inbox' %}" data-dashboard-chat-url="{% url 'inhouse_chat' %}" data-dashboard-emergency-chats-url="{% url 'dashboard_emergency_chats' %}">
   <div class="app-shell">
     <aside class="sidebar" id="dashboard-sidebar">
       <a class="brand" href="{% url 'dashboard_home' %}"><img class="brand-logo" src="{% static 'Rapid Response Emergency Logo.png' %}" alt=""><span>Rapid<span>Response</span></span></a>
       <button class="sidebar-toggle" id="sidebar-toggle" type="button" aria-expanded="true" aria-controls="dashboard-sidebar"><span class="sidebar-toggle-icon" aria-hidden="true">‹</span><span class="sidebar-toggle-label">Collapse menu</span></button>
       <div class="workspace-label">Operations centre</div>
       <nav>
-        <a class="nav-link nav-severity-{{ dashboard_nav_severity|default:'normal' }} {% if request.resolver_match.url_name == 'dashboard_incoming' %}active{% endif %}" data-mini-label="Incoming" href="{% url 'dashboard_incoming' %}"><span class="nav-icon" aria-hidden="true">▦</span><span class="nav-label">Incoming incidents</span><b class="nav-count" data-dashboard-nav-count {% if not dashboard_nav_count %}hidden{% endif %}>{{ dashboard_nav_count }}</b></a>
-        <a class="nav-link {% if request.resolver_match.url_name == 'dashboard_home' or request.resolver_match.url_name == 'dashboard_area_activity' %}active{% endif %}" data-mini-label="Districts" href="{% url 'dashboard_home' %}"><span class="nav-icon" aria-hidden="true">▣</span><span class="nav-label">Cases by district</span></a>
-        <a class="nav-link {% if request.resolver_match.url_name == 'dashboard_global_map' %}active{% endif %}" data-mini-label="Map" href="{% url 'dashboard_global_map' %}"><span class="nav-icon" aria-hidden="true">◎</span><span class="nav-label">Global case map</span></a>
-        <a class="nav-link {% if request.resolver_match.url_name == 'inhouse_chat' %}active{% endif %}" data-mini-label="Chat" href="{% url 'inhouse_chat' %}"><span class="nav-icon" aria-hidden="true">⌁</span><span class="nav-label">In-house chat</span><b class="nav-count" data-dashboard-message-count {% if not dashboard_message_count %}hidden{% endif %}>{{ dashboard_message_count }}</b></a>
-        <a class="nav-link {% if request.resolver_match.url_name == 'dashboard_cases' %}active{% endif %}" data-mini-label="Archive" href="{% url 'dashboard_cases' %}"><span class="nav-icon" aria-hidden="true">◫</span><span class="nav-label">Cases archive</span></a>
-        <a class="nav-link {% if request.resolver_match.url_name == 'dashboard_favorites' %}active{% endif %}" data-mini-label="Favorites" href="{% url 'dashboard_favorites' %}"><span class="nav-icon" aria-hidden="true">★</span><span class="nav-label">Favorites</span></a>
-        <a class="nav-link {% if request.resolver_match.url_name == 'dashboard_referral_inbox' %}active{% endif %}" data-mini-label="Referrals" href="{% url 'dashboard_referral_inbox' %}"><span class="nav-icon" aria-hidden="true">↗</span><span class="nav-label">Referral inbox</span><b class="nav-count" data-dashboard-referral-count {% if not dashboard_referral_count %}hidden{% endif %}>{{ dashboard_referral_count }}</b></a>
-        <a class="nav-link {% if request.resolver_match.url_name == 'dashboard_referral_token' %}active{% endif %}" data-mini-label="Tokens" href="{% url 'dashboard_referral_token' %}"><span class="nav-icon" aria-hidden="true">⌁</span><span class="nav-label">Open referral token</span></a>
+        <a class="nav-link nav-severity-{{ dashboard_nav_severity|default:'normal' }} {% if request.resolver_match.url_name == 'dashboard_incoming' %}active{% endif %}" data-mini-label="Incoming" href="{% url 'dashboard_incoming' %}"><span class="nav-icon" aria-hidden="true"><svg class="nav-icon-svg" viewBox="0 0 24 24" fill="none"><path d="M5 14h14M6 14v-2a6 6 0 0 1 12 0v2M4 17h16M8 20h8M12 2v2M4.9 4.9l1.4 1.4M19.1 4.9l-1.4 1.4" /></svg></span><span class="nav-label">Incoming incidents</span><b class="nav-count" data-dashboard-nav-count {% if not dashboard_nav_count %}hidden{% endif %}>{{ dashboard_nav_count }}</b></a>
+        <a class="nav-link {% if request.resolver_match.url_name == 'dashboard_emergency_chats' %}active{% endif %}" data-mini-label="Victim chats" href="{% url 'dashboard_emergency_chats' %}"><span class="nav-icon" aria-hidden="true"><svg class="nav-icon-svg" viewBox="0 0 24 24" fill="none"><path d="M20 11.5a7 7 0 0 1-7.4 7H8l-4 3v-4.6A7 7 0 1 1 20 11.5Z" /><path d="M8 11.5h.01M12 11.5h.01M16 11.5h.01" /></svg></span><span class="nav-label">Victim chats</span><b class="nav-count" data-dashboard-chat-case-count hidden>0</b></a>
+        <a class="nav-link {% if request.resolver_match.url_name == 'dashboard_home' or request.resolver_match.url_name == 'dashboard_area_activity' %}active{% endif %}" data-mini-label="Districts" href="{% url 'dashboard_home' %}"><span class="nav-icon" aria-hidden="true"><svg class="nav-icon-svg" viewBox="0 0 24 24" fill="none"><path d="M4 20V10h4v10M10 20V4h4v16M16 20v-7h4v7M3 20h18" /></svg></span><span class="nav-label">Cases by district</span></a>
+        <a class="nav-link {% if request.resolver_match.url_name == 'dashboard_global_map' %}active{% endif %}" data-mini-label="Map" href="{% url 'dashboard_global_map' %}"><span class="nav-icon" aria-hidden="true"><svg class="nav-icon-svg" viewBox="0 0 24 24" fill="none"><path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3V6Z" /><path d="M9 3v15M15 6v15" /></svg></span><span class="nav-label">Global case map</span></a>
+        <a class="nav-link {% if request.resolver_match.url_name == 'inhouse_chat' %}active{% endif %}" data-mini-label="Chat" href="{% url 'inhouse_chat' %}"><span class="nav-icon" aria-hidden="true"><svg class="nav-icon-svg" viewBox="0 0 24 24" fill="none"><path d="M20 11.5a7 7 0 0 1-7.4 7H8l-4 3v-4.6A7 7 0 1 1 20 11.5Z" /><path d="M8 11.5h.01M12 11.5h.01M16 11.5h.01" /></svg></span><span class="nav-label">In-house chat</span><b class="nav-count" data-dashboard-message-count {% if not dashboard_message_count %}hidden{% endif %}>{{ dashboard_message_count }}</b></a>
+        <a class="nav-link {% if request.resolver_match.url_name == 'dashboard_cases' %}active{% endif %}" data-mini-label="Archive" href="{% url 'dashboard_cases' %}"><span class="nav-icon" aria-hidden="true"><svg class="nav-icon-svg" viewBox="0 0 24 24" fill="none"><path d="M4 7h16v13H4zM3 4h18v3H3zM9 12h6" /></svg></span><span class="nav-label">Cases archive</span></a>
+        <a class="nav-link {% if request.resolver_match.url_name == 'dashboard_favorites' %}active{% endif %}" data-mini-label="Favorites" href="{% url 'dashboard_favorites' %}"><span class="nav-icon" aria-hidden="true"><svg class="nav-icon-svg" viewBox="0 0 24 24" fill="none"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9L12 3Z" /></svg></span><span class="nav-label">Favorites</span></a>
+        <div class="sidebar-more{% if request.resolver_match.url_name == 'dashboard_referral_inbox' or request.resolver_match.url_name == 'dashboard_referral_token' or request.resolver_match.url_name == 'operations_center' %} is-active{% endif %}" data-sidebar-more>
+          <button class="nav-link sidebar-more-toggle{% if request.resolver_match.url_name == 'dashboard_referral_inbox' or request.resolver_match.url_name == 'dashboard_referral_token' or request.resolver_match.url_name == 'operations_center' %} active{% endif %}" type="button" aria-expanded="{% if request.resolver_match.url_name == 'dashboard_referral_inbox' or request.resolver_match.url_name == 'dashboard_referral_token' or request.resolver_match.url_name == 'operations_center' %}true{% else %}false{% endif %}" aria-controls="sidebar-more-menu">
+            <span class="nav-icon" aria-hidden="true"><svg class="nav-icon-svg" viewBox="0 0 24 24" fill="none"><circle cx="5" cy="12" r="1.4" /><circle cx="12" cy="12" r="1.4" /><circle cx="19" cy="12" r="1.4" /></svg></span><span class="nav-label">More</span><span class="sidebar-more-chevron" aria-hidden="true">⌄</span>
+          </button>
+          <div class="sidebar-more-menu" id="sidebar-more-menu" data-sidebar-more-menu hidden>
+            <a class="nav-link {% if request.resolver_match.url_name == 'dashboard_referral_inbox' %}active{% endif %}" data-mini-label="Referrals" href="{% url 'dashboard_referral_inbox' %}"><span class="nav-icon" aria-hidden="true"><svg class="nav-icon-svg" viewBox="0 0 24 24" fill="none"><path d="M4 5h16v14H4zM4 14h4l2 2h4l2-2h4M12 3v7m0 0-3-3m3 3 3-3" /></svg></span><span class="nav-label">Referral inbox</span><b class="nav-count" data-dashboard-referral-count {% if not dashboard_referral_count %}hidden{% endif %}>{{ dashboard_referral_count }}</b></a>
+            <a class="nav-link {% if request.resolver_match.url_name == 'dashboard_referral_token' %}active{% endif %}" data-mini-label="Tokens" href="{% url 'dashboard_referral_token' %}"><span class="nav-icon" aria-hidden="true"><svg class="nav-icon-svg" viewBox="0 0 24 24" fill="none"><circle cx="8" cy="8" r="3" /><path d="m10.5 10.5 9.5 9.5m-4-4 2-2m-5-1 2-2" /></svg></span><span class="nav-label">Open referral token</span></a>
+            {% if request.user.is_superuser %}
+            <a class="nav-link {% if request.resolver_match.url_name == 'operations_center' %}active{% endif %}" data-mini-label="Ops" href="{% url 'operations_center' %}"><span class="nav-icon" aria-hidden="true"><svg class="nav-icon-svg" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="13" rx="2" /><path d="M8 21h8M12 17v4" /></svg></span><span class="nav-label">Operations Center</span></a>
+            {% endif %}
+          </div>
+        </div>
         {% if request.user.is_superuser %}
-        <a class="nav-link {% if request.resolver_match.url_name == 'operations_center' %}active{% endif %}" data-mini-label="Ops" href="{% url 'operations_center' %}"><span class="nav-icon" aria-hidden="true">⌕</span><span class="nav-label">Operations Center</span></a>
-        <a class="nav-link" data-mini-label="Admin" href="{% url 'admin_section_gate' %}"><span class="nav-icon" aria-hidden="true">⚙</span><span class="nav-label">Main administration</span></a>
+        <a class="nav-link" data-mini-label="Admin" href="{% url 'admin_section_gate' %}"><span class="nav-icon" aria-hidden="true"><svg class="nav-icon-svg" viewBox="0 0 24 24" fill="none"><path d="M12 3 20 6v5c0 5-3.4 8.4-8 10-4.6-1.6-8-5-8-10V6l8-3Z" /><path d="m9 12 2 2 4-4" /></svg></span><span class="nav-label">Main administration</span></a>
         {% endif %}
       </nav>
       <div class="sidebar-bottom">
@@ -73,7 +83,18 @@
           </div>
         </div>
         <div class="mobile-brand"><img class="mobile-brand-logo" src="{% static 'Rapid Response Emergency Logo.png' %}" alt=""><span>Rapid<span>Response</span></span></div>
-        <a class="topbar-user" href="{% url 'dashboard_profile' %}"><div class="avatar">{{ request.user.username|first|upper }}</div><div><strong>{{ request.user.get_full_name|default:request.user.username }}</strong><small>{% if request.user.is_superuser %}Super administrator{% else %}Responder · View profile{% endif %}</small></div></a>
+        <div class="dashboard-user-menu" data-dashboard-user-menu>
+          <button class="topbar-user dashboard-user-trigger" data-dashboard-user-toggle type="button" aria-expanded="false" aria-haspopup="menu">
+            <div class="avatar">{{ request.user.username|first|upper }}</div>
+            <div><strong>{{ request.user.get_full_name|default:request.user.username }}</strong><small>{% if request.user.is_superuser %}Super administrator{% else %}Responder · View profile{% endif %}</small></div>
+            <span class="dashboard-user-chevron" aria-hidden="true">⌄</span>
+          </button>
+          <div class="dashboard-user-menu-panel" data-dashboard-user-panel role="menu" hidden>
+            <div class="dashboard-user-menu-heading"><span>Signed in as</span><strong>{{ request.user.get_full_name|default:request.user.username }}</strong><small>{% if request.user.is_superuser %}Super administrator{% else %}District responder{% endif %}</small></div>
+            <a href="{% url 'dashboard_profile' %}" role="menuitem"><span>My profile</span><small>Districts, passcodes and MFA</small></a>
+            <button data-admin-guide-open type="button" role="menuitem"><span>Page guide</span><small>How to use this workspace</small></button>
+          </div>
+        </div>
         <a class="logout" href="{% url 'dashboard_logout' %}">Sign out</a>
       </header>
       <main class="content content-shell">
@@ -92,21 +113,21 @@
       </main>
     </section>
   </div>
-  <div class="admin-guide-backdrop" data-admin-guide data-user-id="{{ request.user.pk }}" hidden role="dialog" aria-modal="true" aria-labelledby="admin-guide-title" aria-describedby="admin-guide-description">
+  <div class="admin-guide-backdrop" data-admin-guide data-user-id="{{ request.user.pk }}" data-page-key="{{ request.resolver_match.url_name|default:'dashboard' }}" hidden role="dialog" aria-modal="true" aria-labelledby="admin-guide-title" aria-describedby="admin-guide-description">
     <section class="admin-guide-card">
       <button class="admin-guide-close" data-admin-guide-close type="button" aria-label="Close admin quick guide">×</button>
       <div class="admin-guide-icon" aria-hidden="true">⌁</div>
-      <p class="eyebrow">Responder quick start</p>
+      <p class="eyebrow" data-guide-kicker>Responder quick start</p>
       <h2 id="admin-guide-title">Welcome to Rapid Response</h2>
       <p id="admin-guide-description">This short guide shows the normal journey of an emergency case through your workspace.</p>
-      <ol class="admin-guide-steps">
+      <ol class="admin-guide-steps" data-guide-steps>
         <li><b>1</b><span><strong>Check Incoming incidents</strong><small>New cases assigned to your districts appear here first.</small></span></li>
         <li><b>2</b><span><strong>Open and understand the case</strong><small>Review the message, location, map, media, notes, and live status.</small></span></li>
         <li><b>3</b><span><strong>Coordinate the response</strong><small>Use chat, files, calls, referrals, and status updates to keep everyone aligned.</small></span></li>
         <li><b>4</b><span><strong>Close the loop</strong><small>Resolved cases leave the attention queue and remain available in the archive and reports.</small></span></li>
       </ol>
-      <div class="admin-guide-example"><strong>Simple example</strong><p>A case from Masaka is routed to a responder assigned to Masaka. If police support is needed, refer it to the correct station and continue tracking the same case reference.</p></div>
-      <footer class="admin-guide-footer"><span>Only cases assigned or referred to you are shown.</span><button class="admin-guide-confirm" data-admin-guide-close type="button">Got it</button></footer>
+      <div class="admin-guide-example"><strong data-guide-example-title>Simple example</strong><p data-guide-example-copy>A case from Masaka is routed to a responder assigned to Masaka. If police support is needed, refer it to the correct station and continue tracking the same case reference.</p></div>
+      <footer class="admin-guide-footer"><span data-guide-footer-note>Only cases assigned or referred to you are shown.</span><button class="admin-guide-confirm" data-admin-guide-close type="button">Got it</button></footer>
     </section>
   </div>
   <dialog class="report-dialog" data-report-dialog data-report-logo="{% static 'Rapid Response Emergency Logo.png' %}" aria-labelledby="report-dialog-title">
@@ -140,11 +161,13 @@
       <footer class="report-dialog-actions"><div class="report-export-note"><strong>Ready to export?</strong><span>The browser print window lets you print or choose “Save to PDF”.</span></div><button class="report-cancel-button" data-report-close type="button">Cancel</button><button class="report-print-button" data-report-print type="button"><span class="report-action-icon" aria-hidden="true">▤</span><span><strong>Print / Save as PDF</strong><small>Open print preview</small></span><b aria-hidden="true">→</b></button></footer>
     </div>
   </dialog>
-</body>
 <script src="{% static 'js/session-activity.js' %}?v=20261022-session-keepalive"></script>
 <script src="{% static 'js/sidebar-toggle.js' %}?v=20261026"></script>
+<script src="{% static 'js/sidebar-more.js' %}?v=20261026-more-menu"></script>
 <script src="{% static 'js/theme-toggle.js' %}?v=20261002"></script>
-<script src="{% static 'js/dashboard-pulse.js' %}?v=20261025-system-ping"></script>
-<script src="{% static 'js/dashboard-admin-guide.js' %}?v=20261025"></script>
+<script src="{% static 'js/dashboard-pulse.js' %}?v=20261026-chat-alerts"></script>
+<script src="{% static 'js/dashboard-admin-guide.js' %}?v=20261026-page-guides"></script>
   <script src="{% static 'js/report-builder.js' %}?v=20261023-report-footer"></script>
+{% block extra_js %}{% endblock %}
+</body>
 </html>

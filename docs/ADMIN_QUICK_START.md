@@ -21,3 +21,15 @@ If a request comes from Masaka, it is routed to a responder assigned to Masaka. 
 - **Cases archive:** Find acted-on cases and public alert history.
 
 Only cases assigned or referred to your account are available to you. Use the sign-out button when leaving a shared computer.
+
+## Pair a phone for critical backlog alerts
+
+An approved responder can connect one phone browser to receive a private alert when critical cases remain unopened:
+
+1. Open **My profile** on the signed-in admin computer.
+2. In **Trusted admin browser**, generate the QR code.
+3. Scan it with the phone, sign in with the same approved admin account, and allow browser notifications.
+4. Tap **Pair this browser**. The phone is now the only browser that receives this admin's backlog alerts.
+5. In **Critical backlog rule**, keep the default of more than two unopened critical cases or choose another threshold.
+
+The alert is sent only when the number is above the selected threshold and the cases are still unopened. Opening cases resets the backlog. A browser pairing expires when it is disconnected, its notification subscription is removed, or a new pairing is generated. Phone pairing requires HTTPS, a configured Web Push VAPID key, and notification permission.

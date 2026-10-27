@@ -132,6 +132,7 @@
     panel.hidden = !isOpen;
     launcher.setAttribute("aria-expanded", String(isOpen));
     if (isOpen) {
+      setExpanded(true);
       refresh(true);
       bodyField.focus();
     }
