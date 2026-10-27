@@ -17,12 +17,12 @@
 <div class="location-consent-backdrop" id="location-consent" role="dialog" aria-modal="true" aria-labelledby="location-consent-title" aria-describedby="location-consent-description">
   <section class="location-consent-card">
     <div class="location-consent-icon" aria-hidden="true">⌖</div>
-    <p class="eyebrow">Private location reference</p>
-    <h2 id="location-consent-title">Allow location for faster help?</h2>
+    <p class="eyebrow">Private location Routing </p>
+    <h2 id="location-consent-title">Allow me for faster help?</h2>
     <p id="location-consent-description">We will request your current device location once and attach it to this emergency request. If this is a critical case, allowing location also permits periodic updates while this page remains open.</p>
     <p class="location-consent-note">If current access is unavailable, we can use the last location this browser previously shared with this app for up to 24 hours. We cannot access your wider browser location history.</p>
     <div class="location-consent-actions">
-      <button class="location-consent-primary" id="location-consent-allow" type="button">Allow location &amp; tracking</button>
+      <button class="location-consent-primary" id="location-consent-allow" type="button">Allow  &amp; Get help</button>
       <button class="location-consent-secondary" id="location-consent-skip" type="button">Continue without it</button>
     </div>
     <span class="location-consent-status" id="location-consent-status" role="status" aria-live="polite"></span>
@@ -37,7 +37,7 @@
     <h1>Are you unsafe or in need of urgent help?</h1>
     <p class="intro">Send your location and details to the authorised response team nearest to you.</p>
   </div>
-  <a class="quick-link" href="{% url 'quick_help' %}"><span class="quick-link-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 8.5 20 6v12l-5-2.5V19H4V5h11v3.5Z"></path><circle cx="9.5" cy="12" r="2.5"></circle></svg></span><span><strong>Quick video help</strong><small>Tap to record a video if you cannot type</small></span><span class="quick-link-action">Open</span></a>
+  <a class="quick-link" href="{% url 'quick_help' %}"><span class="quick-link-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 8.5 20 6v12l-5-2.5V19H4V5h11v3.5Z"></path><circle cx="9.5" cy="12" r="2.5"></circle></svg></span><span><strong>Quick SOS video help</strong><small>Tap to record a video if you cannot type</small></span><span class="quick-link-action">Open</span></a>
   <nav class="public-action-links" aria-label="Public safety services">
     <a class="public-action-link public-action-link-travel" href="{% url 'subscriber_alerts' %}">
       <span class="public-action-link-icon" aria-hidden="true">↗</span>
