@@ -854,6 +854,7 @@ body.page-operations {
   border: 1px solid rgba(255, 255, 255, 0.7);
   border-radius: 24px;
   background: #fff;
+  color:blue;
   box-shadow: 0 24px 60px rgba(27, 24, 74, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.8);
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
@@ -2346,7 +2347,7 @@ textarea:focus {
 .area-summary-panel .summary-stat.accent,
 .area-summary-panel .summary-stat.danger {
   border: 1px solid #d8e0e8;
-  color: #263f52;
+  color: #0590fb;
   background: #fff;
   box-shadow: 0 7px 0 rgba(106, 201, 235, .28), 0 15px 28px rgba(106, 201, 235, .16);
   transform: perspective(800px) translateZ(0);
